@@ -279,7 +279,7 @@ async function checkHealth() {
   if (!api) { offline(); return; }
   if (cloud) {
     online = true;
-    setStatus('on', 'Bulutda ishlaydi: birinchi ovoz 1 daqiqagacha, keyingilari tez');
+    setStatus('on', 'Bulutda: birinchi ovoz 1 daqiqagacha');
     return;
   }
   try {
