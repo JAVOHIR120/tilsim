@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/site.css?v=21">
+  <link rel="stylesheet" href="assets/css/site.css?v=22">
 </head>
 <body>
   <a class="skip" href="#asosiy">Asosiy qismga o‘tish</a>
@@ -121,19 +121,20 @@
               <div class="panel" role="tabpanel" id="p-api" aria-labelledby="t-api" hidden>
                 <div class="api">
                   <div class="api-copy">
-                    <p class="label">API · tez orada</p>
+                    <p class="label">API · kalitlar erta kirish ro‘yxatiga beriladi</p>
                     <h3>Ilovangizga o‘zbekcha ovoz qo‘shing</h3>
-                    <p>Telegram bot, call-markaz yoki mobil ilova: bitta so‘rov bilan matn yuborasiz va tayyor audio olasiz. Raqamlar, kirill va yangi alifbo avtomatik qayta ishlanadi.</p>
+                    <p>Telegram bot, call-markaz yoki mobil ilova: bitta so‘rov bilan matn yuborasiz va tayyor audio olasiz. MP3, WAV yoki Telegram uchun OGG. Uzun matnlar fonda tayyorlanadi. Raqamlar, kirill va yangi alifbo avtomatik qayta ishlanadi.</p>
                   </div>
-                  <pre class="code" aria-label="API so‘rov namunasi"><code><span class="c-mute"># namuna: API ochilganda shunday ishlaydi</span>
+                  <pre class="code" aria-label="API so‘rov namunasi"><code><span class="c-mute"># Telegram uchun ovozli xabar</span>
 curl $TILSIM_API/v1/tts \
-  -H <span class="c-str">"Authorization: Bearer $TILSIM_KEY"</span> \
+  -H <span class="c-str">"X-API-Key: $TILSIM_KEY"</span> \
+  -H <span class="c-str">"Content-Type: application/json"</span> \
   -d <span class="c-str">'{
     "text": "Narxi 125 000 so‘m, chegirma 15%.",
     "voice": "asoschi",
-    "format": "mp3"
+    "format": "ogg"
   }'</span> \
-  -o natija.mp3</code></pre>
+  -o javob.ogg</code></pre>
                 </div>
               </div>
             </div>
@@ -372,6 +373,6 @@ curl $TILSIM_API/v1/tts \
   </div>
 
   <audio id="player" preload="none"></audio>
-  <script src="assets/js/site.js?v=21"></script>
+  <script src="assets/js/site.js?v=22"></script>
 </body>
 </html>
