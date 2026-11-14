@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Tilsim">
+  <title>Tilsim</title>
+  <defs>
+    <linearGradient id="tilsim-g" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#2B4BC4"/>
+      <stop offset="1" stop-color="#16B9A8"/>
+    </linearGradient>
+  </defs>
+  <!-- the amulet's loop -->
+  <circle cx="32" cy="7.5" r="4.2" fill="none" stroke="#E8B44A" stroke-width="3"/>
+  <!-- tumor: the Uzbek triangular amulet, point down -->
+  <path d="M12 16 H52 L32 55 Z" fill="url(#tilsim-g)" stroke="url(#tilsim-g)" stroke-width="8" stroke-linejoin="round"/>
+  <!-- a voice inside the amulet -->
+  <g fill="#FBF6EA">
+    <rect x="23" y="24" width="4.6" height="10" rx="2.3"/>
+    <rect x="29.7" y="18" width="4.6" height="22" rx="2.3"/>
+    <rect x="36.4" y="24" width="4.6" height="10" rx="2.3"/>
+  </g>
+</svg>

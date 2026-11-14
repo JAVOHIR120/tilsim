@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tilsim: o‘zbekcha sun’iy intellekt ovozi</title>
+  <meta name="description" content="Tilsim matnni jonli o‘zbekcha ovozga aylantiradi: o‘, g‘, q, x va tutuqni to‘g‘ri aytadi, raqam va sanalarni o‘zi so‘zga aylantiradi.">
+  <meta name="theme-color" content="#FDFCFC">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Tilsim: o‘zbekcha sun’iy intellekt ovozi">
+  <meta property="og:description" content="Matnni jonli o‘zbekcha ovozga aylantiring.">
+  <link rel="icon" href="favicon.ico" sizes="48x48">
+  <link rel="icon" href="assets/brand/tilsim-mark.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/site.css?v=16">
+</head>
+<body>
+  <a class="skip" href="#asosiy">Asosiy qismga o‘tish</a>
+
+  <div class="announce">
+    <span>Tilsim yopiq sinov bosqichida. Erta kirish ro‘yxatidagilarga birinchi oy bepul.</span>
+    <a class="btn btn-white btn-xs" href="#erta-kirish">Yozilish</a>
+  </div>
+
+  <div class="sheet">
+    <!-- NAV -->
+    <header class="nav" id="nav">
+      <div class="wrap nav-row">
+        <a class="brand" href="#" aria-label="Tilsim, bosh sahifa">
+          <img src="assets/brand/tilsim-mark.svg" width="28" height="28" alt="">
+          <span>tilsim</span>
+        </a>
+        <nav class="links" id="menu" aria-label="Asosiy menyu">
+          <a href="#studio">Studiya</a>
+          <a href="#sifat">Sifat</a>
+          <a href="#kim-uchun">Kim uchun</a>
+          <a href="#narxlar">Narxlar</a>
+          <a href="#savollar">Savollar</a>
+        </nav>
+        <div class="nav-actions">
+          <a class="btn btn-white btn-sm hide-sm" href="#savollar">Savollar</a>
+          <a class="btn btn-black btn-sm" href="#erta-kirish">Erta kirish</a>
+          <button class="menu-btn" id="menu-btn" type="button" aria-label="Menyuni ochish" aria-expanded="false" aria-controls="menu"><span></span><span></span></button>
+        </div>
+      </div>
+    </header>
+
+    <main id="asosiy">
+      <!-- HERO -->
+      <section class="frame hero">
+        <div class="wrap">
+          <div class="hero-head">
+            <div>
+              <h1>Matnni jonli <br class="br-lg">o‘zbekcha ovozga aylantiring</h1>
+              <div class="actions">
+                <a class="btn btn-black" href="#erta-kirish">Erta kirish</a>
+                <a class="btn btn-white" href="#studio">Qanday ishlaydi</a>
+              </div>
+            </div>
+            <p class="hero-lead">Tilsim o‘zbek tili uchun yaratilgan sun’iy intellekt ovozi. U o‘, g‘, q, x va tutuqni to‘g‘ri aytadi, raqam va sanalarni esa o‘zi so‘zga aylantiradi. Video, audiokitob, ta’lim va botlar uchun mos.</p>
+          </div>
+
+          <div class="product">
+            <div class="seg" role="tablist" aria-label="Mahsulotlar">
+              <button class="seg-btn" role="tab" aria-selected="true" aria-controls="p-tts" id="t-tts"><i class="dot d-feruza"></i>Matndan ovoz</button>
+              <button class="seg-btn" role="tab" aria-selected="false" aria-controls="p-clone" id="t-clone"><i class="dot d-oltin"></i>Ovoz klonlash</button>
+              <button class="seg-btn" role="tab" aria-selected="false" aria-controls="p-api" id="t-api"><i class="dot d-lapis"></i>API</button>
+            </div>
+
+            <div class="stage">
+              <!-- TTS: voice orbs -->
+              <div class="panel" role="tabpanel" id="p-tts" aria-labelledby="t-tts">
+                <div class="orbs" id="orbs" aria-roledescription="karusel" aria-label="Ovoz namunalari"></div>
+                <div class="orb-nav">
+                  <button class="arrow" id="orb-prev" type="button" aria-label="Oldingi namuna"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+                  <div class="orb-caption" aria-live="polite"><b id="orb-title"></b><span id="orb-desc"></span></div>
+                  <button class="arrow" id="orb-next" type="button" aria-label="Keyingi namuna"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+                </div>
+                <div class="stage-foot">
+                  <div class="pills" id="orb-pills" role="tablist" aria-label="Namuna turi"></div>
+                  <a class="btn btn-black btn-sm" href="#erta-kirish">Erta kirish</a>
+                </div>
+              </div>
+
+              <!-- Clone -->
+              <div class="panel" role="tabpanel" id="p-clone" aria-labelledby="t-clone" hidden>
+                <div class="clone">
+                  <div class="clone-copy">
+                    <p class="label">Ovoz klonlash</p>
+                    <h3>O‘z ovozingizda gapiradigan Tilsim</h3>
+                    <p>Bir necha daqiqalik toza yozuvingizdan shaxsiy ovoz yaratiladi. Shundan keyin kurslar, videolar va reklamalar sizning ovozingizda chiqadi. Bu sahifadagi barcha namunalar ham shu yo‘l bilan, loyiha asoschisining ovozida yaratilgan.</p>
+                    <ol class="mini-steps">
+                      <li><span>1</span>Yozib oling: tinch xonada, studiyamizdagi gaplarni o‘qing</li>
+                      <li><span>2</span>Tasdiqlang: ovoz sizniki ekanini va roziligingizni bildiring</li>
+                      <li><span>3</span>Ishlating: istalgan matnni o‘z ovozingizda yarating</li>
+                    </ol>
+                  </div>
+                  <div class="clone-card">
+                    <div class="orb orb-oltin orb-sm" aria-hidden="true"></div>
+                    <p class="label">Klonlangan ovoz namunasi</p>
+                    <p class="quote">«O‘zbekiston Markaziy Osiyoning yuragida joylashgan bo‘lib, uning boy tarixi va mehmondo‘st xalqi butun dunyoga mashhur.»</p>
+                    <button class="btn btn-black btn-sm" type="button" data-play="hikoya"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Tinglash</span></button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- API -->
+              <div class="panel" role="tabpanel" id="p-api" aria-labelledby="t-api" hidden>
+                <div class="api">
+                  <div class="api-copy">
+                    <p class="label">API · tez orada</p>
+                    <h3>Ilovangizga o‘zbekcha ovoz qo‘shing</h3>
+                    <p>Telegram bot, call-markaz yoki mobil ilova: bitta so‘rov bilan matn yuborasiz va tayyor audio olasiz. Raqamlar, kirill va yangi alifbo avtomatik qayta ishlanadi.</p>
+                  </div>
+                  <pre class="code" aria-label="API so‘rov namunasi"><code><span class="c-mute"># namuna: API ochilganda shunday ishlaydi</span>
+curl $TILSIM_API/v1/tts \
+  -H <span class="c-str">"Authorization: Bearer $TILSIM_KEY"</span> \
+  -d <span class="c-str">'{
+    "text": "Narxi 125 000 so‘m, chegirma 15%.",
+    "voice": "asoschi",
+    "format": "mp3"
+  }'</span> \
+  -o natija.mp3</code></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROOF GRID -->
+      <section class="frame proof">
+        <div class="wrap">
+          <div class="proof-head">
+            <p>O‘lchangan sifat, ishlatish uchun tayyor format</p>
+            <a class="btn btn-white btn-sm" href="#sifat">Qanday o‘lchandi</a>
+          </div>
+          <div class="stats">
+            <div><b>99,6%</b><span>harflar to‘g‘ri aytiladi</span></div>
+            <div><b>100%</b><span>«o‘» harfi to‘g‘ri</span></div>
+            <div><b>3</b><span>alifbo: kirill, lotin, yangi</span></div>
+            <div><b>52</b><span>sinov gapida tekshirilgan</span></div>
+          </div>
+          <p class="logos-label">Tilsim ovozini quyidagi platformalarda ishlating</p>
+          <ul class="logos" aria-label="Platformalar">
+            <li><img src="assets/logos/telegram.svg" alt="Telegram" width="28" height="28"><span>Telegram</span></li>
+            <li><img src="assets/logos/youtube.svg" alt="YouTube" width="28" height="28"><span>YouTube</span></li>
+            <li><img src="assets/logos/instagram.svg" alt="Instagram" width="28" height="28"><span>Instagram</span></li>
+            <li><img src="assets/logos/tiktok.svg" alt="TikTok" width="28" height="28"><span>TikTok</span></li>
+            <li><img src="assets/logos/facebook.svg" alt="Facebook" width="28" height="28"><span>Facebook</span></li>
+            <li><img src="assets/logos/whatsapp.svg" alt="WhatsApp" width="28" height="28"><span>WhatsApp</span></li>
+            <li><img src="assets/logos/spotify.svg" alt="Spotify" width="28" height="28"><span>Spotify</span></li>
+            <li><img src="assets/logos/applepodcasts.svg" alt="Apple Podcasts" width="28" height="28"><span>Podcasts</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- STUDIO -->
+      <section class="frame section" id="studio">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="label">Tilsim Studiya</p>
+              <h2>Matnni yozing, <br class="br-lg">Tilsim uni o‘qib beradi</h2>
+              <a class="btn btn-black" href="#erta-kirish">Erta kirish</a>
+            </div>
+            <p>Yozganingizni shundayligicha qo‘ying: raqam, sana, narx, kirill yoki yangi alifbo. Tilsim matnni o‘zbekcha qanday aytilsa, shunday o‘qiydi. Natijani bir zumda tinglab, MP3 yoki WAV qilib yuklab olasiz.</p>
+          </div>
+
+          <div class="media-row">
+            <article class="media media-grad g-lapis">
+              <div class="editor">
+                <p class="editor-text" id="ed-text"></p>
+                <div class="editor-bar">
+                  <span class="chip"><i class="dot d-feruza"></i>O‘zbekcha</span>
+                  <span class="chip"><img src="assets/brand/tilsim-mark.svg" width="14" height="14" alt="">Asoschi</span>
+                  <button class="btn btn-black btn-xs ml-auto" type="button" id="ed-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Tinglash</span></button>
+                </div>
+              </div>
+              <div class="media-caption on-dark">
+                <p class="label">Raqam va sanalar</p>
+                <p>«1 250 000 so‘m» va «15%» ni Tilsim o‘zi so‘z bilan, o‘zbekcha o‘qiydi.</p>
+              </div>
+            </article>
+
+            <article class="media">
+              <ul class="pairs" aria-label="Juft so‘zlar">
+                <li><b>qo‘l</b><em>tana a’zosi</em><i></i><b>ko‘l</b><em>suv havzasi</em></li>
+                <li><b>ot</b><em>hayvon</em><i></i><b>o‘t</b><em>olov, maysa</em></li>
+                <li><b>tog‘</b><em>cho‘qqi</em><i></i><b>tok</b><em>uzum novdasi</em></li>
+              </ul>
+              <div class="media-caption">
+                <p class="label">Toza talaffuz</p>
+                <p>Bir harf ma’noni o‘zgartiradi. Tilsim «o‘», «q» kabi tovushlarni aniq farqlab aytadi.</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="tiles">
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 18 8 6l4 12M5.5 14h5M14 6h4a3 3 0 0 1 0 6h-4zm0 6h4.5a3 3 0 0 1 0 6H14z"/></svg></span>
+              <div><p class="label">Uch alifbo</p><p>Kirill, lotin va 2027-yilgi yangi alifbo (Ö, Ğ, Ş, Ç): hammasi bir xil to‘g‘ri o‘qiladi.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6 11a6 6 0 0 0 12 0M12 17v4"/></svg></span>
+              <div><p class="label">O‘z ovozingiz</p><p>Ovozingizni klonlang va matnlaringizni o‘zingiz o‘qigandek eshiting. Faqat rozilik bilan.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM9 9h6M9 13h6M9 17h4"/></svg></span>
+              <div><p class="label">Uzun matnlar</p><p>Kitob bobi yoki maqola: matn gaplarga bo‘linib, bir xil ovoz va ohangda o‘qiladi.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>
+              <div><p class="label">Yuklab olish</p><p>MP3 yoki WAV formatida yuklab oling. Video, podkast va saytga darhol qo‘yish mumkin.</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUALITY -->
+      <section class="frame section" id="sifat">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="label">Sifat</p>
+              <h2>O‘zbekcha harflarni <br class="br-lg">kim to‘g‘ri aytadi?</h2>
+            </div>
+            <p>Bir xil 52 ta sinov gapi Tilsim va Azure ovozlarida yaratildi. Keyin o‘zbekcha nutqni taniydigan model ularni tinglab, har bir harfni tekshirdi. Gaplar ichida juft so‘zlar, raqamlar va o‘zlashma so‘zlar bor.</p>
+          </div>
+          <div class="media-row single">
+            <article class="media media-chart">
+              <div class="chart-card">
+                <div class="chart-head"><b>«g‘» harfi to‘g‘ri aytilishi</b><span>52 gap · 2026-yil noyabr</span></div>
+                <div class="bars" id="bars-g">
+                  <div class="bar us"><span>Tilsim</span><div class="track"><i style="--v:92%"></i></div><b>92%</b></div>
+                  <div class="bar"><span>Azure Sardor</span><div class="track"><i style="--v:42%"></i></div><b>42%</b></div>
+                  <div class="bar"><span>Azure Madina</span><div class="track"><i style="--v:17%"></i></div><b>17%</b></div>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-head"><b>«o‘» harfi to‘g‘ri aytilishi</b><span>52 gap · 2026-yil noyabr</span></div>
+                <div class="bars" id="bars-o">
+                  <div class="bar us"><span>Tilsim</span><div class="track"><i style="--v:100%"></i></div><b>100%</b></div>
+                  <div class="bar"><span>Azure Sardor</span><div class="track"><i style="--v:66%"></i></div><b>66%</b></div>
+                  <div class="bar"><span>Azure Madina</span><div class="track"><i style="--v:64%"></i></div><b>64%</b></div>
+                </div>
+              </div>
+              <p class="foot-note">Baholash Whisper asosidagi o‘zbekcha ASR bilan qilindi. Azure ovozlari bepul edge-tts orqali olingan.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- USE CASES -->
+      <section class="frame section" id="kim-uchun">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="label">Kim uchun</p>
+              <h2>Ovoz kerak bo‘lgan <br class="br-lg">har bir ish uchun</h2>
+            </div>
+            <p>Diktor, studiya va qayta yozishlarga vaqt sarflamang. Matn tayyor bo‘lsa, ovoz ham bir necha soniyada tayyor.</p>
+          </div>
+          <div class="tiles">
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg></span>
+              <div><p class="label">Video va reklama</p><p>YouTube, Reels va TV uchun diktor ovozi. Studiya kerak emas.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h5v16H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v16h5a2 2 0 0 1 2 2z"/></svg></span>
+              <div><p class="label">Audiokitob</p><p>Uzun matnni boshidan oxirigacha bir xil, tinch va aniq ovozda o‘qiydi.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5zM7 11v5c3 2 7 2 10 0v-5"/></svg></span>
+              <div><p class="label">Ta’lim</p><p>Darslar, testlar va kurslar uchun talaffuzi to‘g‘ri o‘zbekcha ovoz.</p></div>
+            </article>
+            <article class="tile">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8"/></svg></span>
+              <div><p class="label">Botlar va call-markaz</p><p>Telegram botlar va qo‘ng‘iroq markazlari uchun tabiiy ovozli javoblar.</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRICING -->
+      <section class="frame section" id="narxlar">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="label">Narxlar</p>
+              <h2>Faqat ishlatganingiz <br class="br-lg">uchun to‘laysiz</h2>
+            </div>
+            <p>To‘lov ovozga aylantirilgan belgilar soni bo‘yicha olinadi, yashirin to‘lovlar yo‘q. Aniq narxlar ishga tushishdan oldin e’lon qilinadi.</p>
+          </div>
+          <div class="plans">
+            <div class="plan">
+              <p class="label">Sinov</p><p class="price">Bepul</p>
+              <ul><li>Har oy cheklangan belgilar</li><li>Tayyor ovozlar</li><li>MP3 yuklab olish</li></ul>
+              <a class="btn btn-white" href="#erta-kirish">Erta kirish</a>
+            </div>
+            <div class="plan plan-hot">
+              <p class="label">Ijodkor <span class="tag">Ommabop</span></p><p class="price">Tez orada</p>
+              <ul><li>Ko‘proq belgilar</li><li>O‘z ovozingizni klonlash</li><li>Tijoriy foydalanish huquqi</li></ul>
+              <a class="btn btn-black" href="#erta-kirish">Erta kirish</a>
+            </div>
+            <div class="plan">
+              <p class="label">Biznes</p><p class="price">Kelishiladi</p>
+              <ul><li>API va katta hajm</li><li>Kompaniya uchun maxsus ovoz</li><li>Shaxsiy yordam</li></ul>
+              <a class="btn btn-white" href="#erta-kirish">Bog‘lanish</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section class="frame section" id="savollar">
+        <div class="wrap faq-grid">
+          <div>
+            <p class="label">Savollar</p>
+            <h2>Ko‘p so‘raladigan savollar</h2>
+          </div>
+          <div class="faq">
+            <details><summary>Matnni qaysi alifboda yozish kerak?</summary><p>Qaysi biri qulay bo‘lsa, o‘shanda yozing: kirill, lotin yoki 2027-yildan kuchga kiradigan yangi lotin alifbosi (Ö, Ğ, Ş, Ç). Tilsim hammasini bir xil to‘g‘ri o‘qiydi.</p></details>
+            <details><summary>Raqam, sana va narxlarni to‘g‘ri o‘qiydimi?</summary><p>Ha. «2026-yil 15-noyabr», «14:30», «125 000 so‘m», «15%» kabi yozuvlarni Tilsim o‘zi so‘zga aylantirib, o‘zbekcha o‘qiydi.</p></details>
+            <details><summary>O‘z ovozimni klonlay olamanmi?</summary><p>Ha, Ijodkor va Biznes rejalarida. Buning uchun ovoz egasining roziligi shart: birovning ovozini uning ruxsatisiz klonlab bo‘lmaydi.</p></details>
+            <details><summary>Ovozni reklama va videolarda ishlatsam bo‘ladimi?</summary><p>Ha, pullik rejalarda tijoriy foydalanish huquqi bor. Bepul sinov shaxsiy foydalanish uchun.</p></details>
+            <details><summary>Tilsim qachon ishga tushadi?</summary><p>Hozir yopiq sinov bosqichidamiz. Erta kirish ro‘yxatiga yozilsangiz, ochilishi bilan birinchi bo‘lib xabar olasiz, birinchi oy esa bepul bo‘ladi.</p></details>
+            <details><summary>Matnlarim va ovozim xavfsizmi?</summary><p>Matnlar faqat ovoz yaratish uchun ishlatiladi. Klonlangan ovoz faqat sizning hisobingizda turadi. Har bir audioga sun’iy intellekt yaratganini bildiruvchi ko‘rinmas belgi qo‘shiladi.</p></details>
+          </div>
+        </div>
+      </section>
+
+      <!-- FINAL CTA -->
+      <section class="frame final" id="erta-kirish">
+        <div class="wrap final-box">
+          <div class="orb orb-feruza orb-hero" aria-hidden="true"></div>
+          <h2>Birinchilardan bo‘ling</h2>
+          <p>Tilsim ochilganda sizga birinchi bo‘lib xabar beramiz. Birinchi oy bepul.</p>
+          <div class="actions center">
+            <!-- TODO(owner): the real contact goes here (Telegram link or waitlist form endpoint) -->
+            <a class="btn btn-black" href="#" data-todo="contact">Erta kirish ro‘yxatiga yozilish</a>
+            <a class="btn btn-white" href="#savollar">Savollar</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap foot-grid">
+        <div class="foot-brand">
+          <a class="brand" href="#"><img src="assets/brand/tilsim-mark.svg" width="26" height="26" alt=""><span>tilsim</span></a>
+          <p>O‘zbek tili uchun yaratilgan sun’iy intellekt ovozi.</p>
+        </div>
+        <div><p class="foot-h">Mahsulot</p><a href="#studio">Studiya</a><a href="#sifat">Sifat</a><a href="#narxlar">Narxlar</a></div>
+        <div><p class="foot-h">Yordam</p><a href="#savollar">Savollar</a><a href="#erta-kirish">Erta kirish</a></div>
+        <p class="foot-legal">© 2026 Tilsim. Ovozlar sun’iy intellekt yordamida yaratiladi. Birovning ovozini faqat uning roziligi bilan klonlash mumkin. Platforma logotiplari ularning egalariga tegishli.</p>
+      </div>
+    </footer>
+  </div>
+
+  <audio id="player" preload="none"></audio>
+  <script src="assets/js/site.js?v=16"></script>
+</body>
+</html>
