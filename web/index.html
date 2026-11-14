@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/site.css?v=16">
+  <link rel="stylesheet" href="assets/css/site.css?v=21">
 </head>
 <body>
   <a class="skip" href="#asosiy">Asosiy qismga o‘tish</a>
@@ -81,7 +81,17 @@
                 </div>
                 <div class="stage-foot">
                   <div class="pills" id="orb-pills" role="tablist" aria-label="Namuna turi"></div>
-                  <a class="btn btn-black btn-sm" href="#erta-kirish">Erta kirish</a>
+                  <form class="composer" id="composer" autocomplete="off">
+                    <label class="sr-only" for="tts-text">Ovozga aylantiriladigan matn</label>
+                    <textarea id="tts-text" rows="2" maxlength="300" spellcheck="false" placeholder="O‘zbekcha matn yozing: raqam, sana va narxlar ham bo‘laveradi"></textarea>
+                    <div class="composer-bar">
+                      <span class="status" id="tts-status" data-state="check"><i class="led" aria-hidden="true"></i><span id="tts-status-text">Ovoz serveri tekshirilmoqda…</span></span>
+                      <span class="count" id="tts-count" aria-live="off">0 / 300</span>
+                      <a class="btn btn-white btn-sm" id="tts-download" href="#" download="tilsim.mp3" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v9.2l3.3-3.3 1.4 1.4L12 17l-5.7-5.7 1.4-1.4 3.3 3.3z"/><path d="M5 19h14v2H5z"/></svg>Yuklab olish</a>
+                      <button class="btn btn-black btn-sm" id="tts-go" type="submit"><svg class="ic-gen" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9zM19 15l.9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9z"/></svg><svg class="ic-play" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M8 5v14l11-7z"/></svg><svg class="ic-stop" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><i class="spin" hidden aria-hidden="true"></i><span>Ovoz yaratish</span></button>
+                    </div>
+                  </form>
+                  <p class="composer-msg" id="tts-msg" aria-live="polite"></p>
                 </div>
               </div>
 
@@ -362,6 +372,6 @@ curl $TILSIM_API/v1/tts \
   </div>
 
   <audio id="player" preload="none"></audio>
-  <script src="assets/js/site.js?v=16"></script>
+  <script src="assets/js/site.js?v=21"></script>
 </body>
 </html>

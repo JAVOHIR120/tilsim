@@ -51,11 +51,12 @@ function stop() {
   if (c) c.onStop();
 }
 
-async function play(id, handlers) {
+async function play(id, handlers, url = src(id)) {
   stop();
   ensureAnalyser();
   if (ctx && ctx.state === 'suspended') await ctx.resume();
-  if (!player.src.endsWith(src(id))) player.src = src(id);
+  const abs = new URL(url, location.href).href;
+  if (player.src !== abs) player.src = abs;
   player.currentTime = 0;
   try {
     await player.play();
@@ -125,11 +126,13 @@ function layout(level = 0) {
   });
 }
 
+let onSample = null; // set by the live composer below: a picked sample fills the text box
 function setCenter(i, instant = false) {
   const n = items.length;
   center = ((i % n) + n) % n;
   if (current && current.id !== items[center].s.id && current.orb) stop();
   const s = items[center].s;
+  if (onSample) onSample(s);
   $('#orb-title').textContent = s.title;
   $('#orb-desc').textContent = s.desc;
   items.forEach(({ p }, k) => p.setAttribute('aria-selected', String(k === center)));
@@ -145,6 +148,7 @@ function setCenter(i, instant = false) {
 function toggleOrb() {
   const it = items[center];
   if (current && current.orb === it) { stop(); return; }
+  if (genReady()) { playGenerated(lastUrl); return; } // the box holds text just voiced: the orb plays that
   play(it.s.id, {
     orb: it,
     onFrame: (level) => layout(level),
@@ -184,6 +188,184 @@ tabs.forEach((t) => t.addEventListener('click', () => {
   });
   stop();
 }));
+
+/* ------------------------------------------------ live voice: engine/serve.py on the owner's GPU, behind a tunnel */
+// The tunnel address changes on every start, so start-tilsim.ps1 writes it to this gist; the page reads it here.
+const GIST = 'https://api.github.com/gists/5801b83645819ab8d22340b5b60798f2';
+const MAX = 300;
+const ta = $('#tts-text'), goBtn = $('#tts-go'), dl = $('#tts-download'), msg = $('#tts-msg');
+const statusEl = $('#tts-status'), statusText = $('#tts-status-text'), countEl = $('#tts-count');
+let api = null, online = false, busy = false, recheck = 0, userEdited = false;
+let lastUrl = null, lastText = '';
+
+const setStatus = (state, text) => { statusEl.dataset.state = state; statusText.textContent = text; };
+const note = (text, err = false) => { msg.textContent = text; msg.classList.toggle('err', err); };
+const isSample = (t) => SAMPLES.some((s) => s.text === t);
+const genReady = () => !!lastUrl && ta.value.trim() === lastText;
+const LABELS = { busy: 'Yaratilmoqda…', stop: 'To‘xtatish', play: 'Tinglash', gen: 'Ovoz yaratish' };
+
+function syncBtn() {
+  const mode = busy ? 'busy' : current && current.id === 'gen' ? 'stop' : genReady() ? 'play' : 'gen';
+  // toggleAttribute, not .hidden: SVG elements have no `hidden` property
+  $('.ic-gen', goBtn).toggleAttribute('hidden', mode !== 'gen');
+  $('.ic-play', goBtn).toggleAttribute('hidden', mode !== 'play');
+  $('.ic-stop', goBtn).toggleAttribute('hidden', mode !== 'stop');
+  $('.spin', goBtn).toggleAttribute('hidden', mode !== 'busy');
+  $('span', goBtn).textContent = LABELS[mode];
+  goBtn.disabled = busy;
+  goBtn.setAttribute('aria-busy', String(busy));
+}
+
+function count() {
+  ta.style.height = 'auto'; // grow with the text (up to the CSS max-height), so long texts need no inner scrollbar
+  ta.style.height = `${ta.scrollHeight}px`;
+  countEl.textContent = `${ta.value.length} / ${MAX}`;
+  countEl.classList.toggle('over', ta.value.length >= MAX);
+  dl.hidden = !genReady();
+  syncBtn();
+}
+
+// Phones (iOS) only let audio start inside a tap. The voice arrives seconds later, so the shared player is
+// started (muted, silent) during the tap; later play() calls on the same element are then allowed.
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+let unlocked = false;
+function unlockAudio() {
+  ensureAnalyser();
+  if (ctx && ctx.state === 'suspended') ctx.resume();
+  if (unlocked || current) return;
+  unlocked = true;
+  player.muted = true;
+  player.src = SILENT;
+  player.play().then(() => player.pause()).catch(() => {}).finally(() => { player.muted = false; });
+}
+
+async function findApi() {
+  const q = new URLSearchParams(location.search).get('api');
+  if (q) return q.replace(/\/$/, '');
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return 'http://127.0.0.1:8790';
+  try {
+    const r = await fetch(GIST, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+    const cfg = JSON.parse((await r.json()).files['tilsim-api.json'].content);
+    return cfg.api ? String(cfg.api).replace(/\/$/, '') : null;
+  } catch { return null; }
+}
+
+function offline() {
+  online = false;
+  setStatus('off', 'Server hozir o‘chiq: tayyor namunalarni tinglang');
+  recheck = setTimeout(checkHealth, 90000); // the gist API allows 60 reads an hour per visitor
+}
+
+async function checkHealth() {
+  clearTimeout(recheck);
+  if (document.hidden) { recheck = setTimeout(checkHealth, 30000); return; }
+  if (!api) api = await findApi();
+  if (!api) { offline(); return; }
+  try {
+    const r = await fetch(`${api}/v1/health`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
+    const h = await r.json();
+    if (!h.ready) {
+      online = false;
+      setStatus('wait', 'Ovoz modeli yuklanmoqda…');
+      recheck = setTimeout(checkHealth, 8000);
+      return;
+    }
+    online = true;
+    const waiting = (h.busy || 0) + (h.queue || 0);
+    setStatus('on', waiting ? `Jonli · navbatda ${waiting} ta so‘rov` : 'Jonli: asoschi ovozida yaratadi');
+    recheck = setTimeout(checkHealth, 30000);
+  } catch {
+    api = null; // the tunnel may have restarted with a new address: read the gist again next time
+    offline();
+  }
+}
+
+function setBusy(on) {
+  busy = on;
+  items.forEach(({ b }, i) => b.classList.toggle('thinking', on && i === center));
+  syncBtn();
+}
+
+function playGenerated(url) {
+  const it = items[center];
+  it.b.classList.add('playing');
+  play('gen', {
+    orb: it,
+    onFrame: (level) => layout(level),
+    onStop: () => { it.b.classList.remove('playing'); layout(); syncBtn(); },
+  }, url).then(syncBtn);
+}
+
+async function generate(e) {
+  e?.preventDefault();
+  if (busy) return;
+  if (current && current.id === 'gen') { stop(); return; }
+  const text = ta.value.trim();
+  if (!text) { note('Avval matn yozing.', true); ta.focus(); return; }
+  unlockAudio();
+  if (genReady()) { playGenerated(lastUrl); return; }
+  if (!online) {
+    const i = SAMPLES.findIndex((s) => s.text === text);
+    if (i >= 0) {
+      setCenter(i);
+      toggleOrb();
+      note('Server o‘chiq, shu matnning tayyor namunasi ijro etilmoqda.');
+    } else {
+      note('Ovoz serveri hozir o‘chiq. Yuqoridagi namunalarni tinglang yoki keyinroq urinib ko‘ring.', true);
+      checkHealth();
+    }
+    return;
+  }
+  stop();
+  setBusy(true);
+  const t0 = performance.now();
+  const tick = () => note(`Ovoz yaratilmoqda… ${Math.round((performance.now() - t0) / 1000)} s (har bir gap 5–8 soniya oladi)`);
+  tick();
+  const timer = setInterval(tick, 1000);
+  try {
+    const r = await fetch(`${api}/v1/tts`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      note(j.error || `Xato (${r.status}). Qayta urinib ko‘ring.`, true);
+      return;
+    }
+    const blob = await r.blob();
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl = URL.createObjectURL(blob);
+    lastText = text;
+    dl.href = lastUrl;
+    count();
+    const secs = parseFloat(r.headers.get('X-Tilsim-Seconds') || '0');
+    note(secs ? `Tayyor: ${secs.toFixed(1).replace('.', ',')} soniyalik ovoz.` : 'Tayyor.');
+    playGenerated(lastUrl);
+  } catch {
+    note('Server bilan aloqa uzildi. Birozdan keyin qayta urinib ko‘ring.', true);
+    api = null;
+    checkHealth();
+  } finally {
+    clearInterval(timer);
+    setBusy(false);
+  }
+}
+
+onSample = (s) => {
+  if (userEdited) return;
+  ta.value = s.text;
+  count();
+};
+ta.addEventListener('input', () => {
+  const t = ta.value.trim();
+  userEdited = t !== '' && !isSample(t);
+  count();
+  if (msg.classList.contains('err')) note('');
+});
+ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) generate(e); });
+$('#composer').addEventListener('submit', generate);
+onSample(items[center].s);
+checkHealth();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !online) checkHealth(); });
 
 /* buttons that just play a sample (clone card) */
 $$('[data-play]').forEach((btn) => btn.addEventListener('click', () => {

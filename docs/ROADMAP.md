@@ -190,6 +190,16 @@ The owner's verdict outranks the judge, so treat the judge as a tool for compari
   - pick a domain and host (Cloudflare Pages or Oracle; not Vercel Hobby, which forbids commercial use);
   - add a privacy and terms page.
 
+### Live voice on the site (2026-11-15)
+
+- **Setup:** the hero text box calls `engine/serve.py` on the laptop GPU through a Cloudflare quick tunnel.
+  The address is published via a gist; README has the details.
+- **It works only while the laptop runs `start-tilsim.bat`, plugged in.** On battery (seen at 11%), Windows capped the GPU at 30 W and speech came out ~10× slower: 60–89 s for one or two sentences instead of 4–17 s.
+- **Next steps for an always-on service:**
+  - an hourly rented GPU worker, or a fixed tunnel name with a domain;
+  - streaming sentence by sentence, so long texts start playing sooner;
+  - per-user keys once accounts exist.
+
 ## 6. Selling it: what changes
 
 - **Licences:** only the MIT/Apache rows in section 2. Credit CC-BY data (USC) on a "Credits" page. Keep a `LICENSES.md` listing every model and dataset in the product.

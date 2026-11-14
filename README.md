@@ -45,6 +45,34 @@ python -m http.server 8780 --bind 127.0.0.1 --directory web
 - **Cache:** after any CSS or JS edit, bump `?v=N` on both links in `index.html`.
 - **Still to fill:** the contact for every "Erta kirish" button. The links marked `data-todo="contact"` point to `#` until the owner gives a Telegram link or a waitlist form.
 
+### Live voice on the site
+
+The text box in the hero sends text to `engine/serve.py`, which runs on this laptop's GPU.
+A free Cloudflare quick tunnel makes it reachable from the internet. **The site makes speech only while the laptop runs it, plugged in.**
+
+1. Double-click **`start-tilsim.bat`**. It runs `start-tilsim.ps1`, which does three things:
+   - loads the model (`engine/serve.py`, port 8790, AboveNormal priority);
+   - opens the tunnel (`E:\tools\cloudflared\cloudflared.exe` 2026.11.0, signature and SHA-256 checked);
+   - writes the tunnel address to a gist (`5801b836…`), where the page looks it up because the address changes on every start.
+2. Keep that window open. Press Ctrl+C to stop: the gist is set back to `null` and the page shows "server o‘chiq".
+   With the server off, the page still plays the ready-made samples.
+
+| Limit | Value | Where |
+|---|---|---|
+| Text per request | 300 characters (700 after numbers become words) | `MAX_CHARS`, `MAX_SPOKEN` in `engine/serve.py` |
+| Per visitor | 8 requests / 10 min, 60 / day (by `CF-Connecting-IP`, hashed) | `PER_IP` |
+| Queue | 1 on the GPU + 4 waiting, then "navbat to‘la" (503) | `QUEUE_MAX` |
+| Browser callers | only `javohir120.github.io` and `localhost:8780` (CORS) | `ORIGINS` |
+
+- **Speed on an RTX 3050 4 GB, plugged in:** one short sentence takes about 4 s, and 2–3 sentences take about 17 s.
+  On battery, Windows caps the GPU at 30 W and it is about 10× slower.
+- **Repeats are instant:** the last 48 texts are cached.
+- **Privacy:** the text is never written to disk. `out/serve.log` keeps only the time, the length, the duration and a hashed visitor id.
+  Every take keeps Chatterbox's inaudible watermark.
+- **Bad takes:** a take whose speed is far off for its length (cut short or runaway) is made again with the next seed, up to 3 tries.
+- **Test locally:** `python -m http.server 8780 --directory web` together with `engine/serve.py`. On localhost the page calls `http://127.0.0.1:8790` directly.
+  Any page also accepts `?api=https://…` to point at a given server.
+
 ## Record your voice
 
 ```bash
