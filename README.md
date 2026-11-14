@@ -24,6 +24,13 @@ An Uzbek text-to-speech and voice lab, like ElevenLabs but built for Uzbek. The 
 
 The product name is **Tilsim** (talisman; the word holds «til», language). The page is static, so any static host works.
 
+**Live:** https://javohir120.github.io/tilsim/. GitHub Pages serves the `gh-pages` branch, which holds only the contents of `web/`.
+After changing the site, commit to `main`, then publish with:
+
+```bash
+git subtree push --prefix web origin gh-pages
+```
+
 ```bash
 python -m http.server 8780 --bind 127.0.0.1 --directory web
 ```

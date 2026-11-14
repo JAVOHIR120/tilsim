@@ -1,7 +1,7 @@
 """Ovoz studiyasi: a local recording studio for building your TTS voice dataset.
 
     python studio/server.py                       # voice "ovozim", script data/scripts/starter_uz.tsv
-    python studio/server.py --voice jalol --script data/scripts/starter_uz.tsv --port 8765
+    python studio/server.py --voice ovozim --script data/scripts/starter_uz.tsv --port 8765
 
 Then open http://127.0.0.1:8765 in Chrome or Edge. Takes are saved as 16-bit mono WAV (48 kHz) in
 data/recordings/<voice>/wavs/<id>.wav, and data/recordings/<voice>/metadata.csv holds `id|text|spoken`
