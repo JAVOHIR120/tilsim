@@ -19,6 +19,10 @@ An Uzbek text-to-speech and voice lab, like ElevenLabs but built for Uzbek. The 
 | `tools/features.py`, `tools/plot_features.py` | Spectrogram + pitch (F0) + loudness images of generated audio, for checking it by eye. |
 | `tests/` | Normalizer tests: `python -m unittest discover -s tests` |
 | `web/` | The **Tilsim** landing page (static HTML/CSS/JS) and `web/brand.html`, the brand sheet. See "Website" below. |
+| `engine/serve.py` | The voice API server: website text box plus API keys, MP3/WAV/OGG, jobs for long texts, usage. Guide: [docs/API.md](docs/API.md) |
+| `engine/apikeys.py` | Create, list and revoke API keys. Only hashes are stored, in `data/api_keys.json` (git-ignored). |
+| `clients/tilsim.py` | A one-file Python client (standard library only) plus a command line. It finds the current tunnel address by itself. |
+| `tests/test_api.py` | API tests with a fake voice (no GPU): keys, limits, formats, jobs, CORS. |
 
 ## Website (Tilsim)
 

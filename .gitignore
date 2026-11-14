@@ -27,3 +27,8 @@ __pycache__/
 
 # local tool settings
 .claude/settings.local.json
+
+# API keys (hashed store) and plain keys handed to the owner
+data/api_keys.json
+data/api_keys.tmp
+.secrets/
