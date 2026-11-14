@@ -51,14 +51,27 @@ python -m http.server 8780 --bind 127.0.0.1 --directory web
 
 ### Live voice on the site
 
-The text box in the hero sends text to `engine/serve.py`, which runs on this laptop's GPU.
-A free Cloudflare quick tunnel makes it reachable from the internet. **The site makes speech only while the laptop runs it, plugged in.**
+The text box in the hero sends text to `engine/serve.py`. The same server runs in two places:
+
+- **Cloud, always on:** Modal, T4 GPU, `deploy/modal_app.py`, at **https://javohir120--tilsim-api.us-east.modal.run**.
+  - It scales to zero 90 s after the last request. The first request after that wakes it: about 30–60 s.
+  - It runs on the Starter plan's $30/month credit, at about $0.75 per busy hour (T4 + 2 CPU + 8 GB).
+  - Site demos are capped at 25 a day for all visitors together (`TILSIM_DEMO_DAILY_MAX`).
+  - Set a Workspace budget in the Modal dashboard as the hard stop.
+  - Redeploy after any change to `engine/` or `uznorm/`: `E:\tools\modal-venv\Scripts\modal.exe deploy deploy/modal_app.py`.
+    The weights come from Hugging Face at pinned revisions, checked by SHA-256.
+- **Laptop, free and fast:** used first whenever it is on. The page and the client check it, then fall back to the cloud.
+  The page never health-checks the cloud, because that would wake its GPU.
+
+`tools/set_api_address.py` keeps both addresses in a gist (`laptop`, `cloud`).
+
+**To run the laptop server:**
 
 1. Double-click **`start-tilsim.bat`**. It runs `start-tilsim.ps1`, which does three things:
    - loads the model (`engine/serve.py`, port 8790, AboveNormal priority);
    - opens the tunnel (`E:\tools\cloudflared\cloudflared.exe` 2026.11.0, signature and SHA-256 checked);
-   - writes the tunnel address to a gist (`5801b836…`), where the page looks it up because the address changes on every start.
-2. Keep that window open. Press Ctrl+C to stop: the gist is set back to `null` and the page shows "server o‘chiq".
+   - writes the tunnel address to the gist's `laptop` field (the address changes on every start; the cloud field stays).
+2. Keep that window open. Press Ctrl+C to stop: `laptop` goes back to `null` and the page uses the cloud again.
    With the server off, the page still plays the ready-made samples.
 
 | Limit | Value | Where |

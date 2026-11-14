@@ -200,6 +200,19 @@ The owner's verdict outranks the judge, so treat the judge as a tool for compari
   - streaming sentence by sentence, so long texts start playing sooner;
   - per-user keys once accounts exist.
 
+### Cloud copy on Modal (2026-11-15)
+
+- `deploy/modal_app.py` runs the same server on a T4 that scales to zero, at a fixed URL: `javohir120--tilsim-api.us-east.modal.run`.
+  - It uses the Starter plan's $30/month credit.
+  - Measured: a cold start (GPU wake + model load) is about 30–55 s; warm, one sentence takes about 6 s.
+- API keys live in the `tilsim-data` volume (hashes only). New keys are written to both the cloud and the laptop store.
+- Credit guards:
+  - one container at most, idle for 90 s before scaling down;
+  - 25 site demos a day;
+  - the site does not health-check the cloud;
+  - a workspace budget, set by the owner in the dashboard.
+- The laptop stays the free first choice whenever it runs `start-tilsim.bat`.
+
 ## 6. Selling it: what changes
 
 - **Licences:** only the MIT/Apache rows in section 2. Credit CC-BY data (USC) on a "Credits" page. Keep a `LICENSES.md` listing every model and dataset in the product.

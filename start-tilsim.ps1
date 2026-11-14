@@ -19,12 +19,10 @@ New-Item -ItemType Directory -Force $Out | Out-Null
 function Say([string]$text) { Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $text) }
 
 function Set-ApiAddress($url) {
-    # The site reads this gist to find the API; null means "server is off".
-    $json = @{ api = $url; updated = (Get-Date).ToString('s') } | ConvertTo-Json -Compress
-    $tmp = Join-Path $env:TEMP 'tilsim-gist.json'
-    $body = @{ files = @{ 'tilsim-api.json' = @{ content = $json } } } | ConvertTo-Json -Depth 4 -Compress
-    [IO.File]::WriteAllText($tmp, $body, (New-Object Text.UTF8Encoding $false))
-    gh api -X PATCH "gists/$Gist" --input $tmp | Out-Null
+    # The site and clients read this gist: they try the laptop first, then the cloud copy (deploy/modal_app.py).
+    # Only the "laptop" field changes here; the cloud address stays.
+    $value = if ($url) { $url } else { 'none' }
+    python (Join-Path $Root 'tools\set_api_address.py') --laptop $value | Out-Null
 }
 
 function Stop-Tree($proc) {

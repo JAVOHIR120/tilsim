@@ -239,14 +239,30 @@ function unlockAudio() {
   player.play().then(() => player.pause()).catch(() => {}).finally(() => { player.muted = false; });
 }
 
+// Two possible servers: the owner's laptop (free, fast, only while it runs start-tilsim.bat) and the cloud copy
+// on Modal (always there, but it sleeps and every minute costs credit). The laptop wins when it answers.
+// The cloud gets no health check, because any request would wake (and bill) its GPU; it is only called on «Ovoz yaratish».
+let cloud = false;
+const trim = (u) => String(u).replace(/\/$/, '');
+
+async function alive(url) {
+  try {
+    const r = await fetch(`${url}/v1/health`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    return r.ok;
+  } catch { return false; }
+}
+
 async function findApi() {
+  cloud = false;
   const q = new URLSearchParams(location.search).get('api');
-  if (q) return q.replace(/\/$/, '');
+  if (q) return trim(q);
   if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return 'http://127.0.0.1:8790';
   try {
     const r = await fetch(GIST, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
     const cfg = JSON.parse((await r.json()).files['tilsim-api.json'].content);
-    return cfg.api ? String(cfg.api).replace(/\/$/, '') : null;
+    if (cfg.laptop && await alive(trim(cfg.laptop))) return trim(cfg.laptop);
+    if (cfg.cloud) { cloud = true; return trim(cfg.cloud); }
+    return cfg.api ? trim(cfg.api) : null; // older single-address entry
   } catch { return null; }
 }
 
@@ -261,6 +277,11 @@ async function checkHealth() {
   if (document.hidden) { recheck = setTimeout(checkHealth, 30000); return; }
   if (!api) api = await findApi();
   if (!api) { offline(); return; }
+  if (cloud) {
+    online = true;
+    setStatus('on', 'Bulutda ishlaydi: birinchi ovoz 1 daqiqagacha, keyingilari tez');
+    return;
+  }
   try {
     const r = await fetch(`${api}/v1/health`, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
     const h = await r.json();
@@ -319,7 +340,12 @@ async function generate(e) {
   stop();
   setBusy(true);
   const t0 = performance.now();
-  const tick = () => note(`Ovoz yaratilmoqda… ${Math.round((performance.now() - t0) / 1000)} s (har bir gap 5–8 soniya oladi)`);
+  const tick = () => {
+    const s = Math.round((performance.now() - t0) / 1000);
+    note(cloud && s >= 12
+      ? `Bulut serveri uyg‘onmoqda… ${s} s (birinchi ovoz 1 daqiqagacha, keyingilari tez)`
+      : `Ovoz yaratilmoqda… ${s} s (har bir gap 5–8 soniya oladi)`);
+  };
   tick();
   const timer = setInterval(tick, 1000);
   try {

@@ -66,6 +66,35 @@ class KeyStoreTest(unittest.TestCase):
         rec, _ = self.store.create("owner")
         self.assertIsNone(self.store.quota_left(rec))
 
+    def test_two_writers_do_not_undo_each_other(self):
+        """The server (usage) and the key CLI (new key) write the same file; both changes must survive."""
+        server = apikeys.KeyStore(self.path)
+        rec, key = server.create("server-key")
+        cli = apikeys.KeyStore(self.path)
+        _, new_key = cli.create("made-by-cli")
+        server.record(server.find(key), 10, 1.0)          # server writes after the CLI did
+        again = apikeys.KeyStore(self.path)
+        self.assertIsNotNone(again.find(new_key))
+        self.assertEqual(again.find(key)["usage"][apikeys.month_now()]["chars"], 10)
+
+    def test_new_and_revoked_keys_reach_a_running_server(self):
+        server = apikeys.KeyStore(self.path)
+        cli = apikeys.KeyStore(self.path)
+        rec, key = cli.create("late")
+        server.loaded_at -= 10  # an unknown key triggers a re-read (at most every 5 s)
+        self.assertIsNotNone(server.find(key))
+        cli.revoke(rec["id"])
+        server.loaded_at -= apikeys.KeyStore.REFRESH + 1
+        self.assertIsNone(server.find(key))
+
+    def test_hooks_run_around_reads_and_writes(self):
+        calls = []
+        store = apikeys.KeyStore(self.path, before_read=lambda: calls.append("reload"),
+                                 after_write=lambda: calls.append("commit"))
+        store.create("x")
+        self.assertIn("reload", calls)
+        self.assertEqual(calls[-1], "commit")
+
 
 class FakeVoice:
     """Stands in for the GPU model: a quiet tone, 0.05 s per letter, so lengths look real.
@@ -186,6 +215,31 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((status, json.loads(body)["code"]), (400, "too_long"))
         status, _, _ = self.call("POST", "/v1/tts", {"text": "Salom."}, {"Origin": "https://evil.example"})
         self.assertEqual(status, 401)
+
+    def test_daily_demo_cap_for_the_cloud(self):
+        site = {"Origin": "https://javohir120.github.io"}
+        old = serve.DEMO_DAILY_MAX
+        serve.DEMO_DAILY_MAX = 2
+        try:
+            serve.Handler.service.demo_day = ("", 0)
+            codes = []
+            for n in range(3):
+                h = {**site, "CF-Connecting-IP": f"198.51.100.{n}"}  # different visitors
+                status, _, body = self.call("POST", "/v1/tts", {"text": f"Kunlik limit {n}."}, h)
+                codes.append(status if status == 200 else json.loads(body)["code"])
+            self.assertEqual(codes, [200, 200, "daily_limit"])
+        finally:
+            serve.DEMO_DAILY_MAX = old
+
+    def test_visitor_ip_from_proxy_header(self):
+        site = {"Origin": "https://javohir120.github.io"}
+        svc = serve.Handler.service
+        before = set(svc.ip_hits)
+        self.call("POST", "/v1/tts", {"text": "Proksi sinovi."},
+                  {**site, "X-Forwarded-For": "1.1.1.1, 203.0.113.99"})
+        import hashlib
+        want = hashlib.sha256(b"tilsim:203.0.113.99").hexdigest()[:10]
+        self.assertIn(want, set(svc.ip_hits) - before)  # the proxy-added (last) address, not the claimed one
 
     def test_key_sync_limit_is_600(self):
         status, _, body = self.call("POST", "/v1/tts", {"text": "a " * 301}, self.hdr())

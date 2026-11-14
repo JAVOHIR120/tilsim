@@ -34,20 +34,57 @@ def month_now() -> str:
 
 
 class KeyStore:
-    """Thread-safe; every change is written atomically (temp file + rename), so a crash never leaves half a file."""
+    """Thread-safe. Every change re-reads the file, edits one record and writes it back atomically (temp + rename).
+    So the server and the key CLI, two separate writers, never undo each other's work.
 
-    def __init__(self, path: Path = DEFAULT_PATH):
+    The server re-reads the file every REFRESH seconds, or on an unknown key, so new and revoked keys take effect
+    without a restart. `before_read` / `after_write` hooks let a cloud volume reload and commit around
+    each read and write (deploy/modal_app.py)."""
+
+    REFRESH = 30
+
+    def __init__(self, path: Path = DEFAULT_PATH, before_read=None, after_write=None):
         self.path = Path(path)
-        self.lock = threading.Lock()
+        self.before_read, self.after_write = before_read, after_write
+        self.lock = threading.RLock()
         self.recent: dict[str, collections.deque] = collections.defaultdict(collections.deque)
-        self.data = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {"keys": []}
-        self.by_hash = {k["hash"]: k for k in self.data["keys"]}
+        self._reload()
 
-    def _save(self) -> None:
+    def _read(self) -> dict:
+        if self.before_read:
+            try:
+                self.before_read()
+            except Exception:  # noqa: BLE001 (a busy cloud volume: use what is on disk now)
+                pass
+        return json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {"keys": []}
+
+    def _index(self, data: dict) -> None:
+        self.data = data
+        self.by_hash = {k["hash"]: k for k in data["keys"]}
+        self.loaded_at = time.time()
+
+    def _reload(self) -> None:
+        self._index(self._read())
+
+    def _write(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, self.path)
+        self._index(data)
+        if self.after_write:
+            self.after_write()
+
+    def _edit(self, key_id: str, change) -> dict | None:
+        """Read the newest file, apply change(record) to one key, write it back. Returns that record."""
+        with self.lock:
+            data = self._read()
+            rec = next((k for k in data["keys"] if key_id in (k["id"], k["name"])), None)
+            if rec is None:
+                return None
+            change(rec)
+            self._write(data)
+            return rec
 
     def create(self, name: str, per_minute: int = 30, monthly_chars: int | None = None,
                max_chars: int = 5000) -> tuple[dict, str]:
@@ -55,29 +92,29 @@ class KeyStore:
         rec = {"id": "k_" + secrets.token_hex(4), "name": name, "hash": _hash(key), "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
                "active": True, "per_minute": per_minute, "monthly_chars": monthly_chars, "max_chars": max_chars, "usage": {}}
         with self.lock:
-            self.data["keys"].append(rec)
-            self.by_hash[rec["hash"]] = rec
-            self._save()
+            data = self._read()
+            data["keys"].append(rec)
+            self._write(data)
         return rec, key
 
     def find(self, key: str | None) -> dict | None:
         """The active key record for this plain key, else None."""
         if not key or not key.startswith(PREFIX):
             return None
-        rec = self.by_hash.get(_hash(key.strip()))
+        h = _hash(key.strip())
+        with self.lock:
+            age = time.time() - self.loaded_at
+            rec = self.by_hash.get(h)
+            if age > self.REFRESH or (rec is None and age > 5):  # pick up new or revoked keys
+                self._reload()
+                rec = self.by_hash.get(h)
         return rec if rec and rec.get("active") else None
 
     def get(self, key_id: str) -> dict | None:
-        return next((k for k in self.data["keys"] if k["id"] == key_id or k["name"] == key_id), None)
+        return next((k for k in self.data["keys"] if key_id in (k["id"], k["name"])), None)
 
     def revoke(self, key_id: str) -> bool:
-        with self.lock:
-            rec = self.get(key_id)
-            if not rec:
-                return False
-            rec["active"] = False
-            self._save()
-            return True
+        return self._edit(key_id, lambda r: r.update(active=False)) is not None
 
     def rate_wait(self, rec: dict, now: float | None = None) -> int:
         """0 if this key may make a request now (and counts it), else seconds to wait. Window: 60 s."""
@@ -100,12 +137,14 @@ class KeyStore:
         return max(0, limit - used)
 
     def record(self, rec: dict, chars: int, seconds: float) -> None:
-        with self.lock:
-            m = rec.setdefault("usage", {}).setdefault(month_now(), {"requests": 0, "chars": 0, "audio_seconds": 0.0})
+        def bump(r: dict) -> None:
+            m = r.setdefault("usage", {}).setdefault(month_now(), {"requests": 0, "chars": 0, "audio_seconds": 0.0})
             m["requests"] += 1
             m["chars"] += chars
             m["audio_seconds"] = round(m["audio_seconds"] + seconds, 2)
-            self._save()
+        fresh = self._edit(rec["id"], bump)
+        if fresh is not None:
+            rec["usage"] = fresh["usage"]  # keep the caller's copy current (quota checks read it)
 
     def usage(self, rec: dict) -> dict:
         month = month_now()

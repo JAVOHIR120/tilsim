@@ -3,8 +3,11 @@
 O‘zbekcha matnni asoschi ovozida audioga aylantiradi: MP3, WAV yoki OGG (Telegram ovozli xabari uchun).
 Matnni o‘zingiz tayyorlashingiz shart emas: raqam, sana, narx, foiz, kirill yozuvi va yangi alifbo (Ö, Ğ, Ş, Ç) avtomatik to‘g‘ri o‘qiladi.
 
-> **Server shu noutbukda ishlaydi.** API faqat `start-tilsim.bat` oynasi ochiq va noutbuk zaryadlovchiga ulangan paytda javob beradi.
-> Server o‘chiq bo‘lsa, mijoz `offline` xatosini qaytaradi.
+> **Ikkita server bor:**
+> - **Bulut** (Modal, T4 GPU) doim ishlaydi. Ish bo‘lmasa uxlaydi va har oydagi $30 bepul kreditdan sarflaydi. 1–2 daqiqa tanaffusdan keyingi birinchi so‘rov modelni yuklagani uchun 30–60 soniya kutadi.
+> - **Noutbuk** (`start-tilsim.bat`) bepul va tez, lekin faqat noutbuk yoqiq va zaryadga ulangan paytda ishlaydi.
+>
+> Sayt va Python mijoz avval noutbukni sinaydi, u javob bermasa bulutga o‘tadi.
 
 ## 1. Kalit
 
@@ -14,22 +17,38 @@ Matnni o‘zingiz tayyorlashingiz shart emas: raqam, sana, narx, foiz, kirill yo
 
 Kalitni so‘rovning `X-API-Key: tlsm_...` sarlavhasida yuboring (yoki `Authorization: Bearer tlsm_...`).
 
+**Bulutdagi kalitlar** (asosiysi):
+
 ```bash
-python engine/apikeys.py create "Telegram bot" --out .secrets/telegram-bot.key        # yangi kalit (faylga yoziladi)
-python engine/apikeys.py create "Mijoz A" --monthly-chars 200000 --per-minute 10 --out .secrets/mijoz-a.key
-python engine/apikeys.py list                                                          # kalitlar va shu oydagi sarf
-python engine/apikeys.py revoke k_1a2b3c4d                                             # kalitni o‘chirish
+set M=E:\tools\modal-venv\Scripts\modal.exe
+%M% run deploy/modal_app.py::keys --cmd create --name "Telegram bot"            # -> .secrets/telegram-bot.key
+%M% run deploy/modal_app.py::keys --cmd create --name "Mijoz A" --monthly-chars 200000 --per-minute 10
+%M% run deploy/modal_app.py::keys --cmd list                                    # kalitlar va shu oydagi sarf
+%M% run deploy/modal_app.py::keys --cmd revoke --key-id k_1a2b3c4d
+%M% run deploy/modal_app.py::keys --cmd import                                  # noutbukdagi kalitlarni bulutga ko‘chirish
 ```
 
-Yangi kalitni ishlatish uchun server qayta ishga tushirilishi kerak (`start-tilsim.bat`).
+**Noutbukdagi kalitlar:**
+
+```bash
+python engine/apikeys.py create "Telegram bot" --out .secrets/telegram-bot.key
+python engine/apikeys.py list
+python engine/apikeys.py revoke k_1a2b3c4d
+```
+
+- **Qayta ishga tushirish shart emas:** yangi yoki o‘chirilgan kalit 30 soniya ichida kuchga kiradi.
+- **Statistika alohida yuritiladi:** bulut va noutbuk sarfni har biri o‘zida hisoblaydi.
+- **Bulutdagi kalitni noutbukda ishlatish uchun** uni `apikeys.py` bilan noutbukda ham yarating, yoki noutbuk kalitlarini `import` bilan bulutga ko‘chiring.
 
 ## 2. Server manzili
 
-Bepul Cloudflare tunnelining manzili **har ishga tushganda o‘zgaradi** (`https://<so‘zlar>.trycloudflare.com`).
-Joriy manzil har doim shu gistda turadi:
+- **Bulut manzili doimiy:** `https://javohir120--tilsim-api.us-east.modal.run`. Ilovalaringizga shuni yozib qo‘yishingiz mumkin (`TILSIM_API_URL`).
+- **Noutbuk tunnelining manzili** har ishga tushganda o‘zgaradi (`https://<so‘zlar>.trycloudflare.com`).
+
+Ikkala manzil ham shu gistda turadi (`laptop` va `cloud` maydonlari):
 
 ```bash
-curl -s https://api.github.com/gists/5801b83645819ab8d22340b5b60798f2 | python -c "import json,sys; print(json.loads(json.load(sys.stdin)['files']['tilsim-api.json']['content'])['api'])"
+curl -s https://api.github.com/gists/5801b83645819ab8d22340b5b60798f2 | python -c "import json,sys; print(json.loads(json.load(sys.stdin)['files']['tilsim-api.json']['content']))"
 ```
 
 - **Python mijoz** (`clients/tilsim.py`) manzilni o‘zi topadi.

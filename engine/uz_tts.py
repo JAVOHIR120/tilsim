@@ -37,8 +37,11 @@ from chatterbox.models.tokenizers import EnTokenizer  # noqa: E402
 from chatterbox.models.voice_encoder import VoiceEncoder  # noqa: E402
 from chatterbox.tts import ChatterboxTTS, Conditionals  # noqa: E402
 
-BASE_DIR = Path("E:/tools/voiceclone/ckpt")
-ADAPTER_DIR = ROOT / "models" / "uzbek-chatterbox-lora"
+import os  # noqa: E402
+
+# The cloud copy (deploy/modal_app.py) points these at the weights baked into its image.
+BASE_DIR = Path(os.environ.get("TILSIM_BASE_DIR", "E:/tools/voiceclone/ckpt"))
+ADAPTER_DIR = Path(os.environ.get("TILSIM_ADAPTER_DIR", ROOT / "models" / "uzbek-chatterbox-lora"))
 DEFAULT_REF = Path("E:/tools/voiceclone/work/ref.wav")
 VOCAB = 2454
 LORA_SCALE = 256 / 128  # lora_alpha / r (adapter_config.json)

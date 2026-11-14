@@ -36,14 +36,28 @@ class TilsimError(Exception):
         self.status, self.code, self.message, self.retry_after = status, code, message, retry_after
 
 
+def _alive(url: str, timeout: float = 6) -> bool:
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"{url}/v1/health", headers={"User-Agent": "tilsim-client"}),
+                                    timeout=timeout) as r:
+            return r.status == 200
+    except OSError:
+        return False
+
+
 def find_base_url(timeout: float = 10) -> str:
-    """TILSIM_API_URL, else the address in the gist, else this PC."""
+    """TILSIM_API_URL; else the owner's laptop if it answers (free); else the cloud copy (always on, uses Modal
+    credit; its first request after a pause wakes the GPU, up to ~1 min); else this PC."""
     if os.environ.get("TILSIM_API_URL"):
         return os.environ["TILSIM_API_URL"].rstrip("/")
     try:
         req = urllib.request.Request(GIST_API, headers={"Accept": "application/vnd.github+json", "User-Agent": "tilsim-client"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             cfg = json.loads(json.loads(r.read())["files"]["tilsim-api.json"]["content"])
+        if cfg.get("laptop") and _alive(cfg["laptop"].rstrip("/")):
+            return cfg["laptop"].rstrip("/")
+        if cfg.get("cloud"):
+            return cfg["cloud"].rstrip("/")
         if cfg.get("api"):
             return cfg["api"].rstrip("/")
     except (OSError, ValueError, KeyError):

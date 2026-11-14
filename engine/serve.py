@@ -43,9 +43,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "engine"))
 sys.path.insert(0, str(ROOT))
+import os  # noqa: E402
+
+from apikeys import DEFAULT_PATH as KEYS_PATH  # noqa: E402
 from apikeys import KeyStore  # noqa: E402
 from uznorm import normalize, split_sentences  # noqa: E402
 
+# Settings the cloud copy changes through the environment (deploy/modal_app.py)
+KEYS_FILE = Path(os.environ.get("TILSIM_KEYS", KEYS_PATH))
+REF_OVERRIDE = os.environ.get("TILSIM_REF")                    # the voice clip's path inside the container
+DEMO_DAILY_MAX = int(os.environ.get("TILSIM_DEMO_DAILY_MAX", "0")) or None   # all site demos per day (cloud credits)
 # website (no key)
 DEMO_MAX_CHARS = 300
 DEMO_PER_IP = [(600, 8), (86400, 60)]   # (window seconds, max requests) per visitor
@@ -115,12 +122,13 @@ class Voice:
         self.np, self.torch, self.uz = np, torch, uz_tts
         profile = json.loads((ROOT / "data" / "voices" / f"{profile_name}.json").read_text(encoding="utf-8"))
         self.params = {**uz_tts.PARAMS, **profile.get("params", {})}
+        ref = REF_OVERRIDE or profile["ref"]
         t0 = time.time()
         self.engine = uz_tts.load_engine()
         self.sr = self.engine.sr
         self.engine.ENC_COND_LEN = int(float(profile.get("prompt_sec", 6)) * 16000)
-        self.engine.prepare_conditionals(profile["ref"], exaggeration=self.params["exaggeration"])
-        self.prefix = uz_tts.Prefix(self.engine, profile["ref"], profile["prefix_end"], profile["prefix_text"])
+        self.engine.prepare_conditionals(ref, exaggeration=self.params["exaggeration"])
+        self.prefix = uz_tts.Prefix(self.engine, ref, profile["prefix_end"], profile["prefix_text"])
         vram = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0
         log(f"model ready on {self.engine.device} in {time.time() - t0:.0f} s, VRAM {vram:.2f} GB")
 
@@ -154,18 +162,25 @@ class Voice:
 
 
 class Service:
-    def __init__(self, keys: KeyStore):
+    def __init__(self, keys: KeyStore, preload: bool = False):
+        """preload: load the model before returning (the cloud opens its port only when the voice is ready);
+        otherwise it loads in the background and requests meanwhile get 503 "loading"."""
         self.keys = keys
         self.voice: Voice | None = None
         self.jobs_q: queue.PriorityQueue = queue.PriorityQueue(maxsize=QUEUE_MAX)
         self.seq = itertools.count()
         self.busy = 0
         self.demo_waiting = 0
+        self.demo_day: tuple[str, int] = ("", 0)
         self.lock = threading.Lock()
         self.ip_hits: dict[str, collections.deque] = collections.defaultdict(collections.deque)
         self.cache: collections.OrderedDict = collections.OrderedDict()
         self.jobs: dict[str, dict] = {}
-        threading.Thread(target=self._worker, daemon=True).start()
+        if preload:
+            self._load()
+            threading.Thread(target=self._loop, daemon=True).start()
+        else:
+            threading.Thread(target=self._worker, daemon=True).start()
 
     # ---------------------------------------------------------------- GPU worker
     def _load(self) -> None:
@@ -179,6 +194,9 @@ class Service:
         except Exception as e:  # noqa: BLE001
             log(f"model failed to load: {e!r}")
             return
+        self._loop()
+
+    def _loop(self) -> None:
         while True:
             _, _, kind, payload, fut = self.jobs_q.get()
             if kind == "demo":
@@ -243,6 +261,12 @@ class Service:
     def demo_wait(self, who: str) -> int:
         now = time.time()
         with self.lock:
+            if DEMO_DAILY_MAX:  # all site visitors together, per UTC day: protects the cloud's monthly credit
+                day = time.strftime("%Y-%m-%d", time.gmtime(now))
+                count = self.demo_day[1] if self.demo_day[0] == day else 0
+                if count >= DEMO_DAILY_MAX:
+                    return -1
+                self.demo_day = (day, count + 1)
             q = self.ip_hits[who]
             while q and now - q[0] > DEMO_PER_IP[-1][0]:
                 q.popleft()
@@ -345,7 +369,10 @@ class Handler(BaseHTTPRequestHandler):
         raise ApiError(401, "no_key", "API kalit kerak: X-API-Key sarlavhasida yuboring.")
 
     def _visitor(self) -> str:
-        ip = self.headers.get("CF-Connecting-IP") or self.client_address[0]
+        # Cloudflare tunnel sets CF-Connecting-IP; a cloud proxy appends the client to X-Forwarded-For
+        # (the last entry is the one the proxy added, so a visitor cannot fake it)
+        forwarded = [p.strip() for p in (self.headers.get("X-Forwarded-For") or "").split(",") if p.strip()]
+        ip = self.headers.get("CF-Connecting-IP") or (forwarded[-1] if forwarded else self.client_address[0])
         return hashlib.sha256(f"tilsim:{ip}".encode()).hexdigest()[:10]
 
     def _ready(self) -> None:
@@ -444,6 +471,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._key_limits(rec, len(req["text"]))
             else:
                 wait = s.demo_wait(who)
+                if wait < 0:
+                    raise ApiError(429, "daily_limit", "Bugungi bepul sinovlar tugadi. Ertaga urinib ko‘ring "
+                                                       "yoki erta kirish ro‘yxatiga yoziling.", 3600)
                 if wait:
                     raise ApiError(429, "rate_limited", f"Juda ko‘p so‘rov. {wait} soniyadan keyin urinib ko‘ring.", wait)
             fut: Future = Future()
@@ -454,8 +484,6 @@ class Handler(BaseHTTPRequestHandler):
                 log(f"{who} failed: {e!r}")
                 raise ApiError(500, "failed", "Ovoz yaratishda xato bo‘ldi. Qayta urinib ko‘ring.") from None
             s.remember(cache_key, result)
-            if rec:
-                s.keys.record(rec, len(req["text"]), result["seconds"])
         try:
             audio = encode(result["pcm"], result["sr"], req["format"])
         except Exception as e:  # noqa: BLE001
@@ -466,6 +494,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, audio, FORMATS[req["format"]],
                    {"X-Tilsim-Seconds": f"{result['seconds']:.2f}", "X-Tilsim-Chars": str(len(req["text"])),
                     "X-Tilsim-Spoken": urllib.parse.quote(result["spoken"])})
+        if rec and not hit:  # after the answer is sent: on the cloud this write is a volume commit
+            s.keys.record(rec, len(req["text"]), result["seconds"])
 
     def _new_job(self, body: dict) -> None:
         s = self.service
@@ -498,19 +528,24 @@ class Handler(BaseHTTPRequestHandler):
         return view
 
 
+def build(host: str, port: int, preload: bool = False, before_read=None, after_write=None) -> ThreadingHTTPServer:
+    """The HTTP server, ready to serve_forever(). The cloud passes volume reload/commit hooks for the key file."""
+    keys = KeyStore(KEYS_FILE, before_read=before_read, after_write=after_write)
+    Handler.service = Service(keys, preload=preload)
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.daemon_threads = True
+    log(f"listening on http://{host}:{port}, {sum(k['active'] for k in keys.data['keys'])} active API keys"
+        f"{'' if preload else ' (model loading in the background)'}")
+    return server
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8790)
     ap.add_argument("--host", default="127.0.0.1", help="keep 127.0.0.1: the tunnel reaches it locally")
     args = ap.parse_args()
     set_priority_above_normal()
-    keys = KeyStore()
-    Handler.service = Service(keys)
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    server.daemon_threads = True
-    log(f"listening on http://{args.host}:{args.port}, {sum(k['active'] for k in keys.data['keys'])} active API keys "
-        f"(model loading in the background)")
-    server.serve_forever()
+    build(args.host, args.port).serve_forever()
 
 
 if __name__ == "__main__":
