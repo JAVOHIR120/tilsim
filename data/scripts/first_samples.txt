@@ -1,0 +1,9 @@
+# First test lines for the Uzbek model in the owner's voice (digits on purpose: uznorm must voice them)
+Assalomu alaykum! Men o'zbek tilida gapiradigan sun'iy intellekt ovoziman.
+Yig'ilish 2026-yil 15-noyabr kuni soat 14:30da boshlanadi.
+G'ozlar g'alati ovoz chiqarib, bog' ustidan uchib o'tishdi.
+Siz bugun kechqurun nima qilmoqchisiz?
+Narxi 125 000 so'm, chegirma bilan esa 90 000 so'm.
+Samarqand dunyodagi eng qadimiy shaharlardan biri bo'lib, uning yoshi ikki ming yetti yuz yildan oshadi.
+Tabriklayman, siz imtihondan a'lo baho bilan o'tdingiz!
+Qish kechalari qishloq qariyalari o'choq boshida ertak aytib berishardi.

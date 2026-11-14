@@ -1,0 +1,10 @@
+{
+ "note": "The owner's voice. Every sentence continues from the first sentence of ref.wav (see Prefix in engine/uz_tts.py). Settings picked 2026-11-14 on data/eval/test_all.tsv (p6-calm): take-1 CER 1.7%, first word right 92%, no junk at the start.",
+ "ref": "E:/tools/voiceclone/work/ref.wav",
+ "check": "E:/tools/voiceclone/work/heldout.wav",
+ "prefix_text": "Bir ming uch yuz o'ttiz oltinchi yilda Kesh viloyatida tug'ilgan.",
+ "prefix_end": 5.75,
+ "prompt_sec": 6,
+ "params": {"temperature": 0.7, "exaggeration": 0.4, "cfg_weight": 0.3, "repetition_penalty": 2.0},
+ "params_note": "temperature 0.7 chosen 2026-11-15 by a blind Gemini native-ear judge on 20 sentences: 7.50 native / 7.10 natural (0.8: 7.15/6.70; 0.6: 7.40/6.85; 0.5: 7.32/7.05). Use with best-of-3 picked by CER then UTMOS (CER 0.46%, UTMOS 3.80)."
+}

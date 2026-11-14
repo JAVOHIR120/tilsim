@@ -1,0 +1,29 @@
+# your voice and big files stay local
+data/recordings/
+*.wav
+*.mp3
+*.safetensors
+*.pt
+*.onnx
+models/
+checkpoints/
+out/
+# public benchmark speech (FLEURS, CC-BY): re-download with tools/bench_human.py
+data/human/
+
+# the website needs its demo clips (owner's voice, -16 LUFS, ~0.5 MB)
+!web/assets/audio/
+!web/assets/audio/*.mp3
+
+# secrets
+.env
+.env.*
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# local tool settings
+.claude/settings.local.json

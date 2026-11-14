@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ovoz Studiyasi</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Ovoz Studiyasi <span id="voiceName" class="chip"></span></div>
+    <div class="progress" title="Maqsad: 90 daqiqa toza ovoz">
+      <div class="bar"><div id="progressFill"></div></div>
+      <div id="progressText" class="muted small">—</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage">
+      <div class="card mic">
+        <div class="row">
+          <button id="micBtn" class="btn">Mikrofonni yoqish</button>
+          <select id="deviceSelect" hidden aria-label="Mikrofon"></select>
+          <button id="noiseBtn" class="btn ghost" disabled>Jimlikni o'lchash (3 s)</button>
+          <span id="noiseInfo" class="muted small"></span>
+        </div>
+        <div class="meter" aria-label="Ovoz balandligi">
+          <div class="zone"></div><div id="meterFill"></div><div id="meterPeak"></div><span id="meterDb">—</span>
+        </div>
+        <div id="micInfo" class="muted small">Chrome yoki Edge'da oching. Mikrofon ruxsatini bering.</div>
+      </div>
+
+      <div class="card sentence">
+        <div class="meta"><span id="itemNo" class="muted small"></span><span id="itemStatus" class="small"></span></div>
+        <p id="spoken" class="spoken"></p>
+        <p id="original" class="original muted small"></p>
+        <div id="issues"></div>
+        <div id="editBox" hidden>
+          <textarea id="editText" rows="3" spellcheck="false"></textarea>
+          <div class="row">
+            <button id="editSave" class="btn primary">Matnni yangilash</button>
+            <button id="editCancel" class="btn ghost">Bekor qilish</button>
+            <span class="muted small">Yangi matn yozuv bilan birga saqlanadi.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card controls">
+        <div class="row center">
+          <button id="prevBtn" class="btn ghost icon" title="Oldingi (←)" aria-label="Oldingi">←</button>
+          <button id="recBtn" class="btn rec" disabled><span id="recLabel">● Yozish</span> <kbd>Space</kbd></button>
+          <button id="playBtn" class="btn ghost" disabled>▶ Tinglash <kbd>P</kbd></button>
+          <button id="saveBtn" class="btn primary" disabled>✓ Saqlash <kbd>Enter</kbd></button>
+          <button id="nextBtn" class="btn ghost icon" title="Keyingi (→)" aria-label="Keyingi">→</button>
+        </div>
+        <canvas id="wave" height="96"></canvas>
+        <div id="stats" class="stats"></div>
+        <div class="row keys small muted">
+          <span><kbd>R</kbd> qayta yozish</span><span><kbd>E</kbd> matnni tuzatish</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> o'tish</span>
+        </div>
+      </div>
+
+      <details class="card tips">
+        <summary>Toza yozish uchun maslahatlar</summary>
+        <ul>
+          <li><b>Jim, "yumshoq" xona:</b> gilam, parda, yumshoq mebel aks-sadoni yutadi. Kiyim to'la shkaf oldida yozish ham juda yaxshi.</li>
+          <li><b>Masofa:</b> mikrofon og'izdan 15–20 sm, har doim bir xil joyda. Pop-filtr bo'lmasa, mikrofonni biroz yonga qarating.</li>
+          <li><b>Balandlik:</b> gapirganda indikator yashil zonada (−18 … −6 dB) tursin, qizilga chiqmasin.</li>
+          <li><b>Ohang:</b> tabiiy, aniq, suhbatdoshga gapirgandek. Har seansda bir xil ovoz va energiya.</li>
+          <li><b>Dam oling:</b> har 30–45 daqiqada tanaffus qiling, suv iching. Charchagan ovoz ham modelga o'tadi.</li>
+          <li><b>Xato bo'lsa:</b> <kbd>R</kbd> bilan qayta yozing. Matn sizga g'alati tuyulsa, <kbd>E</kbd> bilan tuzating: matn aytilgan so'zga aynan mos bo'lishi shart.</li>
+          <li><b>Bir xil sharoit:</b> har safar o'sha mikrofon, o'sha xona. Ventilyator, konditsioner, muzlatgich shovqinini o'chiring.</li>
+        </ul>
+      </details>
+    </section>
+
+    <aside class="card list">
+      <div class="row between">
+        <strong>Gaplar</strong>
+        <label class="small muted"><input type="checkbox" id="onlyTodo"> faqat yozilmaganlar</label>
+      </div>
+      <ol id="list"></ol>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

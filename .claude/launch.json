@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["studio/server.py", "--voice", "ovozim"],
+      "port": 8765
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8780", "--bind", "127.0.0.1", "--directory", "web"],
+      "port": 8780
+    },
+    {
+      "name": "studio-test",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["studio/server.py", "--voice", "_test", "--port", "8766"],
+      "port": 8766
+    }
+  ]
+}

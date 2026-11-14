@@ -1,0 +1,56 @@
+# How to SAY words that Uzbek text borrows from other languages.
+# Format: written<TAB>spoken (Uzbek spelling). Whole word, case-sensitive.
+# A key written in lowercase also matches its Capitalised form at a sentence start.
+# Applied before numbers, so keys may hold digits (4G, IPv4). Edit freely: this is your pronunciation dictionary.
+# A key ending in * is a word stem: it also covers the word with suffixes (sentabr* -> sentabrda, sentabrga, ...).
+#
+# Russian loans written without the soft vowel the 1995 spelling dropped; people say them with it (the owner flagged
+# «oktabr, sentabr» on 2026-11-14: the model read them stiffly, «sentabirga»).
+sentabr*	sentyabr
+oktabr*	oktyabr
+# (Model-only tricks such as «ya» -> «yaa» live in uznorm/respell.py, not here: this file is real pronunciation.)
+IELTS	ayelts
+AI	ey-ay
+ChatGPT	Chat Ji Pi Ti
+OpenAI	Open Ey-Ay
+Wi-Fi	vay-fay
+WiFi	vay-fay
+Bluetooth	blutus
+Word	Vord
+Excel	Eksel
+PowerPoint	Pauer Point
+Windows	Vindovs
+Linux	Linuks
+YouTube	Yutub
+Google	Gugl
+iPhone	ayfon
+Apple	Eppl
+Microsoft	Maykrosoft
+Facebook	Feysbuk
+WhatsApp	Vatsap
+TikTok	Tik-Tok
+email	imeyl
+e-mail	imeyl
+online	onlayn
+offline	oflayn
+OK	okey
+1G	bir ji
+2G	ikki ji
+3G	uch ji
+4G	to'rt ji
+5G	besh ji
+GSM	ji es em
+SMS	es em es
+USB	yu es bi
+PDF	pi di ef
+IT	ay ti
+IPv4	ay pi vi to'rt
+IPv6	ay pi vi olti
+FAT32	fat o'ttiz ikki
+Ctrl	kontrol
+B2B	bi tu bi
+B2C	bi tu si
+MP3	em pi uch
+mp3	em pi uch
+24/7	kecha-yu kunduz
+COVID-19	kovid o'n to'qqiz

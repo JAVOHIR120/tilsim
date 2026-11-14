@@ -1,0 +1,104 @@
+# Starter recording script: 100 sentences, about 12 minutes of speech.
+# Format: id<TAB>text. Lines starting with # are skipped. Digits are fine: the studio shows the spoken form.
+# The full dataset needs about 700 sentences (1.5 h); add more files to data/scripts/ the same way.
+# If a sentence sounds unnatural to you, fix it in the studio (E) before recording: the text must match your words.
+uz0001	Bugun ertalab Toshkentda havo ochiq bo'ldi, kunduzi esa harorat yigirma ikki darajagacha ko'tarildi.
+uz0002	Samarqand dunyodagi eng qadimiy shaharlardan biri bo'lib, uning yoshi ikki ming yetti yuz yildan oshadi.
+uz0003	Yangi metro bekati yaqin oylarda yo'lovchilar uchun ochiladi.
+uz0004	Fermerlar bu yil paxta va g'alladan mo'l hosil yig'ib olishdi.
+uz0005	Ma'lumotlarga ko'ra, mamlakatda internetdan foydalanuvchilar soni tez o'smoqda.
+uz0006	Ko'chada qor yog'ayotgan edi, shuning uchun men issiq kiyindim.
+uz0007	Bozorda olma, nok, uzum va anor arzonlashdi.
+uz0008	Tog'dan esgan sovuq shamol kechqurun yana kuchaydi.
+uz0009	Kutubxonada kitob o'qish uchun qulay va jimjit xona bor.
+uz0010	Farg'ona vodiysi o'zining shirin mevalari bilan mashhur.
+uz0011	Alisher Navoiy o'zbek adabiyotining asoschisi hisoblanadi.
+uz0012	Universitet talabalari yozgi ta'tilda amaliyot o'tashadi.
+uz0013	Bu loyiha yosh dasturchilarga o'z g'oyalarini amalga oshirishda yordam beradi.
+uz0014	Shifokorlar har kuni kamida sakkiz stakan suv ichishni maslahat berishadi.
+uz0015	Orol dengizining qurishi mintaqa uchun katta ekologik muammoga aylandi.
+uz0016	Xorazmda qovun va tarvuz pishig'i avgust oyida boshlanadi.
+uz0017	Choyxonada keksalar palov yeb, bamaylixotir suhbatlashib o'tirishardi.
+uz0018	Qishloqdagi maktab yangidan ta'mirlandi va kompyuter xonasi jihozlandi.
+uz0019	Jahon chempionatida o'zbek sportchilari uchta oltin medalni qo'lga kiritishdi.
+uz0020	Toshkent xalqaro aeroportidan Istanbulga har kuni reyslar uchadi.
+uz0021	Siz bugun kechqurun nima qilmoqchisiz?
+uz0022	Bu kitobni qayerdan sotib olsam bo'ladi?
+uz0023	Nega hali ham javob bermayapsiz?
+uz0024	Ertaga soat nechada uchrashamiz?
+uz0025	Sizningcha, sun'iy intellekt odamlarning ishini osonlashtiradimi?
+uz0026	Choy ichasizmi yoki qahva?
+uz0027	Bu yo'l bilan bekatga qancha vaqtda yetib boramiz?
+uz0028	Onangizga qo'ng'iroq qildingizmi?
+uz0029	Qaysi fasl sizga ko'proq yoqadi: bahormi yoki kuzmi?
+uz0030	Ushbu xizmatdan foydalanish uchun ro'yxatdan o'tish shartmi?
+uz0031	Voy, qanday chiroyli manzara!
+uz0032	Tabriklayman, siz imtihondan a'lo baho bilan o'tdingiz!
+uz0033	Ehtiyot bo'ling, yo'l juda sirpanchiq!
+uz0034	Rahmat, do'stim, sen menga juda katta yordam berding!
+uz0035	Afsuski, bugungi konsert bekor qilindi.
+uz0036	Shoshiling, poyezd besh daqiqadan keyin jo'naydi!
+uz0037	Qoyil, bu ishni bir kunda tugatibsiz-ku!
+uz0038	Yo'q, men bunga hech qachon rozi bo'lmayman!
+uz0039	Xayriyat, hammasi yaxshilik bilan tugadi.
+uz0040	Ajoyib yangilik! Bizning jamoamiz finalga chiqdi!
+uz0041	Assalomu alaykum, yaxshimisiz, ishlaringiz qalay?
+uz0042	Kechirasiz, biroz kechikib qoldim, yo'lda tirbandlik bor ekan.
+uz0043	Mayli, unda ertaga ertalab gaplashamiz.
+uz0044	Iltimos, eshikni yopib qo'ying, xonaga sovuq kiryapti.
+uz0045	Menimcha, bu fikr to'g'ri, lekin uni yana bir bor o'ylab ko'rish kerak.
+uz0046	Xavotir olmang, hammasini o'zim hal qilaman.
+uz0047	Kecha do'stlarim bilan tog'ga sayohatga bordik.
+uz0048	Hozir bandman, keyinroq o'zim qo'ng'iroq qilaman.
+uz0049	Uyga yetib borganingda menga xabar ber, xo'pmi?
+uz0050	Bu taomning ta'mi xuddi buvimning oshiga o'xshaydi.
+uz0051	Yig'ilish 15-noyabr kuni soat 14:30da boshlanadi.
+uz0052	Narxi 125 000 so'm, chegirma bilan esa 90 000 so'm.
+uz0053	Bu yil kompaniya daromadi 12% ga oshdi.
+uz0054	2027-yilda yangi ko'prik qurib bitkaziladi.
+uz0055	Avtobus har 15 daqiqada keladi.
+uz0056	Telefon raqamim: to'qson, bir yuz yigirma uch, qirq besh, oltmish yetti.
+uz0057	Ikki shahar orasidagi masofa taxminan 350 km.
+uz0058	Sinfda 28 nafar o'quvchi bor.
+uz0059	U 79-xonadonda yashaydi.
+uz0060	Pirog uchun 3,5 kg un va 6 dona tuxum oling.
+uz0061	Telefoningizga yangi ilovani yuklab oling va akkaunt yarating.
+uz0062	Kompyuterda Word faylini ochib, matnni tahrirlang.
+uz0063	Wi-Fi paroli eshik yonidagi qog'ozda yozilgan.
+uz0064	Biz Telegram kanalimizda har kuni yangi video joylaymiz.
+uz0065	Sun'iy intellekt asosidagi ovoz texnologiyalari tez rivojlanmoqda.
+uz0066	Onlayn do'kondan buyurtma bergan edim, kuryer kechqurun olib keladi.
+uz0067	Bu dastur Windows va Linux tizimlarida bemalol ishlaydi.
+uz0068	Taqdimotni PowerPoint dasturida tayyorladim.
+uz0069	Saytda texnik ishlar olib borilmoqda, birozdan so'ng qayta urinib ko'ring.
+uz0070	Smartfon batareyasi tez tugayotgan bo'lsa, ekran yorqinligini kamaytiring.
+uz0071	Ko'l bo'yida qo'ylar o'tlab yurgan edi.
+uz0072	G'ozlar g'alati ovoz chiqarib, bog' ustidan uchib o'tishdi.
+uz0073	Qish kechalari qishloq qariyalari o'choq boshida ertak aytib berishardi.
+uz0074	Xo'roz tong saharda hovlida qichqirdi.
+uz0075	Hamma hayron bo'ldi: harakat haqiqatan ham natija berdi.
+uz0076	San'at va ma'rifat jamiyatning ma'naviy boyligidir.
+uz0077	Mening singlim ingliz tilini juda yaxshi biladi.
+uz0078	Jajji jo'jalar onasining ortidan yugurib borishardi.
+uz0079	Erta tongda bug'doy dalalari ustida tuman suzib yurardi.
+uz0080	Do'kondagi qog'oz va qalamlar tugab qolibdi.
+uz0081	Otam doim to'g'ri yo'ldan og'ma, deb o'rgatardi.
+uz0082	Sharqona shirinliklar choy bilan ayniqsa mazali bo'ladi.
+uz0083	Fevral oyida fermer xo'jaliklari yangi texnika sotib oldi.
+uz0084	Zargar tilla uzukni zo'r mahorat bilan yasadi.
+uz0085	Ishonchli hamkor topish har qanday biznes uchun muhim.
+uz0086	Bir bor ekan, bir yo'q ekan, qadim zamonda bir dono podshoh yashagan ekan.
+uz0087	Yo'lovchilar diqqatiga: Toshkentdan Samarqandga jo'novchi tezyurar poyezd ikkinchi platformadan jo'naydi.
+uz0088	Hurmatli tinglovchilar, quyidagi ma'lumotni diqqat bilan eshitishingizni so'raymiz.
+uz0089	Ilm olish igna bilan quduq qazishdek mashaqqatli, ammo uning mevasi shirin bo'ladi.
+uz0090	Kitob o'qish insonning dunyoqarashini kengaytiradi va fikrlash qobiliyatini rivojlantiradi.
+uz0091	Ushbu qo'llanmada siz ovozli yordamchidan qanday foydalanishni bilib olasiz.
+uz0092	Ob-havo ma'lumotlariga ko'ra, dam olish kunlari yomg'ir yog'ishi kutilmoqda.
+uz0093	Har bir inson o'z ona tilini hurmat qilishi va uni asrab-avaylashi lozim.
+uz0094	Mehmonlar dasturxon atrofida o'tirib, issiq non va qaymoq bilan nonushta qilishdi.
+uz0095	Bolalar maydonchada to'p o'ynab, quvnoq kulishardi.
+uz0096	Avvalo, barcha qatnashchilarga chuqur minnatdorchilik bildiraman.
+uz0097	Diqqat, diqqat! Barcha talabalar soat to'qqizda majlislar zaliga to'plansin.
+uz0098	Qadrli do'stlar, bugungi sonimizda sizni ko'plab qiziqarli mavzular kutmoqda.
+uz0099	Agar savollaringiz bo'lsa, bizga istalgan vaqtda murojaat qiling.
+uz0100	Tinglaganingiz uchun rahmat, keyingi uchrashuvgacha xayr!
