@@ -94,11 +94,13 @@ image = (
     .run_function(fetch_weights)
     .env({"TILSIM_BASE_DIR": f"{WEIGHTS}/base", "TILSIM_ADAPTER_DIR": f"{WEIGHTS}/lora",
           "TILSIM_REF": f"{CODE}/voice/ref.wav", "TILSIM_KEYS": "/data/api_keys.json",
-          "TILSIM_DEMO_DAILY_MAX": DEMO_DAILY_MAX, "PYTHONUNBUFFERED": "1"})
+          "TILSIM_DEMO_DAILY_MAX": DEMO_DAILY_MAX, "PYTHONUNBUFFERED": "1",
+          # live streaming: engine/stream.py, fp16 + CUDA graphs on the T4, 3 parallel streams (docs/STREAMING.md)
+          "TILSIM_ENGINE": os.environ.get("TILSIM_ENGINE", "both"), "TILSIM_STREAMS": "2",
+          "TILSIM_CFM_STEPS": os.environ.get("TILSIM_CFM_STEPS", "6"), "TILSIM_DEC_COND": "10"})  # live T3 in fp16: fp32 on a T4 is too slow (RTF 0.9-1.1, docs/STREAMING.md)
     .add_local_dir(ROOT / "uznorm", f"{CODE}/uznorm", ignore=["__pycache__", "*.pyc"])
-    .add_local_file(ROOT / "engine" / "uz_tts.py", f"{CODE}/engine/uz_tts.py")
-    .add_local_file(ROOT / "engine" / "serve.py", f"{CODE}/engine/serve.py")
-    .add_local_file(ROOT / "engine" / "apikeys.py", f"{CODE}/engine/apikeys.py")
+    .add_local_dir(ROOT / "engine", f"{CODE}/engine", ignore=["__pycache__", "*.pyc"])
+    .add_local_file(ROOT / "tools" / "bench_stream.py", f"{CODE}/tools/bench_stream.py")
     .add_local_file(ROOT / "data" / "voices" / "ovozim.json", f"{CODE}/data/voices/ovozim.json")
     .add_local_file(REF_WAV, f"{CODE}/voice/ref.wav")
 )
@@ -125,6 +127,49 @@ def api():
         server.serve_forever()
 
     threading.Thread(target=run, daemon=True).start()
+
+
+@app.function(image=image, gpu=GPU, cpu=2.0, memory=8192, timeout=1800, max_containers=1)
+def bench_gpu(args: list[str]) -> str:
+    """tools/bench_stream.py on the cloud GPU (warm: the script warms up before measuring)."""
+    import subprocess
+    out = subprocess.run([sys.executable, "-X", "utf8", f"{CODE}/tools/bench_stream.py", *args],
+                         capture_output=True, text=True, cwd=CODE)
+    noise = ("Warning", "warn(", "deprecat", "LoRACompatible", "sdp_kernel", "self.gen = func")
+    lines = [ln for ln in (out.stdout + out.stderr).splitlines() if not any(n in ln for n in noise)]
+    return "\n".join(lines[-80:])
+
+
+@app.local_entrypoint()
+def bench(mode: str = "baseline", extra: str = ""):
+    """modal run deploy/modal_app.py::bench --mode stream --extra "--dtype fp16 --cfm-steps 6" """
+    print(bench_gpu.remote(["--mode", mode, *extra.split()]))
+
+
+@app.function(image=image.add_local_file(ROOT / "tools" / "render_stream.py", f"{CODE}/tools/render_stream.py")
+              .add_local_dir(ROOT / "data" / "eval", f"{CODE}/data/eval"),
+              gpu=GPU, cpu=2.0, memory=8192, timeout=1800, max_containers=1)
+def render_gpu(tsv: str, args: list[str], env: dict) -> dict:
+    """tools/render_stream.py on the cloud GPU; returns {file name: bytes} for scoring on the laptop."""
+    import subprocess
+    out_dir = "/tmp/render"
+    p = subprocess.run([sys.executable, "-X", "utf8", f"{CODE}/tools/render_stream.py", f"{CODE}/{tsv}", out_dir, *args],
+                       capture_output=True, text=True, cwd=CODE, env={**os.environ, **env})
+    files = {f.name: f.read_bytes() for f in Path(out_dir).glob("*")} if Path(out_dir).exists() else {}
+    files["_log.txt"] = (p.stdout[-3000:] + p.stderr[-3000:]).encode()
+    return files
+
+
+@app.local_entrypoint()
+def render(tsv: str = "data/eval/test_uz.tsv", out: str = "out/cer/t4", extra: str = "", english: str = "respell"):
+    """modal run deploy/modal_app.py::render --out out/cer/t4-final --extra "--fast --dec-cond 10 --cfm-steps 6" """
+    files = render_gpu.remote(tsv, extra.split(), {"TILSIM_ENGLISH": english})
+    dest = ROOT / out
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, data in files.items():
+        (dest / name).write_bytes(data)
+    print(files["_log.txt"].decode()[-600:])
+    print(f"{len(files) - 1} files -> {dest}")
 
 
 @app.function(image=admin_image, volumes={"/data": data}, timeout=120)

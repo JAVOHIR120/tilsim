@@ -23,6 +23,13 @@ An Uzbek text-to-speech and voice lab, like ElevenLabs but built for Uzbek. The 
 | `engine/apikeys.py` | Create, list and revoke API keys. Only hashes are stored, in `data/api_keys.json` (git-ignored). |
 | `clients/tilsim.py` | A one-file Python client (standard library only) plus a command line. It finds the current tunnel address by itself. |
 | `tests/test_api.py` | API tests with a fake voice (no GPU): keys, limits, formats, jobs, CORS. |
+| `engine/stream.py` | **Live speech.** Sentence-by-sentence, chunk-by-chunk audio with a Pacer and crossfaded seams. Also serves `/v1/tts`. Numbers and decisions: [docs/STREAMING.md](docs/STREAMING.md) |
+| `engine/fastt3.py`, `engine/fastflow.py` | CUDA-graph decoding for the token model (2.8× faster per token) and the flow UNet (5.5×), with exact-parity checks. |
+| `engine/live.py`, `engine/wsproto.py` | Live sessions (text in pieces, cancel, usage) and a stdlib WebSocket for `/v1/stream`. |
+| `uznorm/english.py` | English inside Uzbek text (IELTS examiner): respelled so the Uzbek voice says it clearly. Lexicon: `uznorm/data/english.tsv`. |
+| `clients/tilsim-stream.js` | Browser client: WebSocket → AudioWorklet, gap-free playback, instant cancel (for IELTS Buddy). |
+| `tools/bench_stream.py`, `tools/sweep_stream.py`, `tools/render_stream.py` | Latency benchmark (time to first audio, RTF, VRAM, parallel streams); setting sweeps; test-set renders for CER/UTMOS. |
+| `tests/test_stream_api.py` | Streaming tests with a fake voice: protocol, cancel, tokens, limits, chunked HTTP, slot priority. |
 
 ## Website (Tilsim)
 
@@ -57,6 +64,8 @@ The text box in the hero sends text to `engine/serve.py`. The same server runs i
   - It scales to zero 90 s after the last request. The first request after that wakes it: about 30–60 s.
   - It runs on the Starter plan's $30/month credit, at about $0.75 per busy hour (T4 + 2 CPU + 8 GB).
   - Site demos are capped at 25 a day for all visitors together (`TILSIM_DEMO_DAILY_MAX`).
+  - It runs two engines (`TILSIM_ENGINE=both`): `/v1/tts` and jobs use the original fp32 whole-sentence path, and live
+    `/v1/stream` uses the fast streaming engine. The laptop runs only the fast one (`stream`), since 4 GB holds one.
   - Set a Workspace budget in the Modal dashboard as the hard stop.
   - Redeploy after any change to `engine/` or `uznorm/`: `E:\tools\modal-venv\Scripts\modal.exe deploy deploy/modal_app.py`.
     The weights come from Hugging Face at pinned revisions, checked by SHA-256.

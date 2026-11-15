@@ -113,6 +113,14 @@ class KeyStore:
     def get(self, key_id: str) -> dict | None:
         return next((k for k in self.data["keys"] if key_id in (k["id"], k["name"])), None)
 
+    def active_by_id(self, key_id: str) -> dict | None:
+        """The active record with this id, re-reading the file at most every REFRESH s (revocations reach tokens)."""
+        with self.lock:
+            if time.time() - self.loaded_at > self.REFRESH:
+                self._reload()
+            rec = next((k for k in self.data["keys"] if k["id"] == key_id), None)
+        return rec if rec and rec.get("active") else None
+
     def revoke(self, key_id: str) -> bool:
         return self._edit(key_id, lambda r: r.update(active=False)) is not None
 

@@ -15,5 +15,11 @@ _INITIAL_YA = re.compile(r"(?<![\w'])([Yy])a(?=[a-z])")  # not «ya'ni»: the tu
 
 
 def for_model(text: str) -> str:
-    """Spoken Uzbek text (from normalize()) -> the spelling the TTS model pronounces best."""
+    """Spoken Uzbek text (from normalize()) -> the spelling the TTS model pronounces best.
+    English stretches (IELTS examiner speech) are respelled first: uznorm/english.py.
+    TILSIM_ENGLISH=raw switches that off (for A/B tests)."""
+    import os
+    if os.environ.get("TILSIM_ENGLISH", "respell") != "raw":
+        from .english import respell_english
+        text = respell_english(text)
     return _INITIAL_YA.sub(lambda m: m.group(1) + "aa", text)

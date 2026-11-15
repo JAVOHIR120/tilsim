@@ -161,5 +161,37 @@ class Split(unittest.TestCase):
         self.assertEqual(" ".join(chunks).split(), text.split())
 
 
+class EnglishRespellTest(unittest.TestCase):
+    """uznorm/english.py: English stretches of mixed text are respelled, Uzbek text never changes."""
+
+    def setUp(self):
+        from uznorm.english import respell_english
+        self.r = respell_english
+
+    def test_examiner_sentence(self):
+        self.assertEqual(self.r("Endi Part ikki ga o'tamiz. Describe a place you like to visit."),
+                         "Endi Part ikki ga o'tamiz. Diskrayb e pleys yu layk tu vizit.")
+
+    def test_two_language_words_stay_uzbek_alone(self):
+        for t in ["Bu yerda band emas.", "Men test topshirdim.", "U it boqadi.", "Yanvar, may va iyun.",
+                  "Bunday okean real emas, qanday teatr?", "Kutubxonada qulay xona bor."]:
+            self.assertEqual(self.r(t), t)
+
+    def test_single_clear_english_word_inside_uzbek(self):
+        self.assertEqual(self.r("ayelts imtihonida pronunciation ham baholanadi."),
+                         "ayelts imtihonida pronansieyshn ham baholanadi.")
+
+    def test_every_uzbek_test_sentence_is_untouched(self):
+        root = Path(__file__).resolve().parents[1]
+        for f in ("data/eval/test_all.tsv", "data/scripts/starter_uz.tsv"):
+            for ln in (root / f).read_text(encoding="utf-8").splitlines():
+                if ln.strip() and not ln.startswith("#"):
+                    n = normalize(ln.split("\t")[-1])
+                    self.assertEqual(self.r(n), n, f"{f}: {n}")
+
+    def test_unknown_english_word_by_rules(self):
+        self.assertEqual(self.r("Please describe the weather station."), "Pliz diskrayb di veder steyshn.")
+
+
 if __name__ == "__main__":
     unittest.main()

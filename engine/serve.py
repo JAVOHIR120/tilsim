@@ -53,6 +53,19 @@ from uznorm import normalize, split_sentences  # noqa: E402
 KEYS_FILE = Path(os.environ.get("TILSIM_KEYS", KEYS_PATH))
 REF_OVERRIDE = os.environ.get("TILSIM_REF")                    # the voice clip's path inside the container
 DEMO_DAILY_MAX = int(os.environ.get("TILSIM_DEMO_DAILY_MAX", "0")) or None   # all site demos per day (cloud credits)
+# Engine: "stream" = engine/stream.py (half precision + CUDA graphs, live sessions, ~3 GB VRAM; serves /v1/tts too),
+# "classic" = the fp32 whole-text path of engine/uz_tts.py (no live streaming),
+# "both" = classic for /v1/tts and jobs (best CER) + stream for live sessions (~7 GB: the cloud T4).
+ENGINE = os.environ.get("TILSIM_ENGINE", "stream")
+STREAMS = int(os.environ.get("TILSIM_STREAMS", "1"))          # parallel live streams (each its own KV cache)
+CFM_STEPS = int(os.environ.get("TILSIM_CFM_STEPS", "6"))      # flow steps in the vocoder (10 = original; 6 scored the same)
+T3_DTYPE = os.environ.get("TILSIM_T3_DTYPE", "")             # token model precision: fp32 on the T4 (CER 1.53 -> 1.37%,
+                                                             # fixes «o'n ikkinchi»); bf16 on the 4 GB laptop (VRAM)
+DEC_COND = float(os.environ.get("TILSIM_DEC_COND", "10"))    # seconds of the voice clip the vocoder attends to
+                                                             # (10 = original; 4 and 6 cost CER, docs/STREAMING.md)
+STREAM_MAX_CHARS = 2000                                       # /v1/tts/stream body
+MAX_SESSIONS_PER_STREAM = 2                                   # open WebSockets per GPU stream slot
+TOKEN_MAX_TTL = 3600                                          # browser tokens live at most an hour
 # website (no key)
 DEMO_MAX_CHARS = 300
 DEMO_PER_IP = [(600, 8), (86400, 60)]   # (window seconds, max requests) per visitor
@@ -67,6 +80,7 @@ JOB_KEEP_SECONDS = 3600
 QUEUE_MAX = 12
 CACHE_SIZE = 32         # raw float audio: ~1 MB per 10 s clip
 PRIORITY = {"key": 0, "demo": 1, "job": 2}
+SLOT_PRIORITY = {"live": 0, "key": 1, "demo": 2, "job": 3}   # GPU slots: a live conversation goes first
 FORMATS = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg"}
 VOICES = {"asoschi": {"profile": "ovozim", "name": "Asoschi", "language": "uz", "gender": "male",
                       "description": "Loyiha asoschisining ovozi: tinch, aniq, iliq."}}
@@ -103,6 +117,47 @@ def encode(audio, sr: int, fmt: str) -> bytes:
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-threads", "2", "-f", "f32le", "-ar", str(sr), "-ac", "1",
            "-i", "-", *level, *codec, "-"]
     return subprocess.run(cmd, input=audio.astype("float32").tobytes(), capture_output=True, check=True).stdout
+
+
+def _b64(b: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _unb64(s: str) -> bytes:
+    import base64
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def make_token(rec: dict, ttl: int) -> tuple[str, int]:
+    """A short-lived browser token for one key: tlst_<key id + expiry>.<HMAC>.
+    Signed with the key's stored hash: only this server (or the key's owner) can make one, and revoking the
+    key kills its tokens. The real key never reaches the student's browser."""
+    import hmac
+    exp = int(time.time()) + ttl
+    payload = f"{rec['id']}.{exp}"
+    sig = hmac.new(rec["hash"].encode(), payload.encode(), hashlib.sha256).digest()[:24]
+    return "tlst_" + _b64(payload.encode()) + "." + _b64(sig), exp
+
+
+def check_token(keys: KeyStore, token: str) -> dict | None:
+    import hmac
+    if not token or not token.startswith("tlst_"):
+        return None
+    try:
+        p64, s64 = token[5:].split(".")
+        payload = _unb64(p64).decode()
+        key_id, exp = payload.rsplit(".", 1)
+        if int(exp) < time.time():
+            return None
+        sig = _unb64(s64)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    rec = keys.active_by_id(key_id)
+    if rec is None:
+        return None
+    want = hmac.new(rec["hash"].encode(), payload.encode(), hashlib.sha256).digest()[:24]
+    return rec if hmac.compare_digest(want, sig) else None
 
 
 class ApiError(Exception):
@@ -161,6 +216,53 @@ class Voice:
         return self.np.concatenate(pieces[:-1]) if pieces else self.np.zeros(0, self.np.float32)
 
 
+class StreamVoice:
+    """/v1/tts and /v1/jobs on the streaming engine, so one model in VRAM serves everything.
+    The whole sentence is made before it is used, so the speed check and retake of Voice still apply."""
+
+    def __init__(self, streamer):
+        import numpy as np
+        self.s, self.sr, self.np = streamer, streamer.sr, np
+
+    def sentence(self, spoken: str, seed: int, priority: int = 1):
+        np = self.np
+        letters = max(1, sum(ch.isalpha() for ch in spoken))
+        best, best_gap = None, 1e9
+        for attempt in range(3):
+            parts = list(self.s.sentence(spoken, seed + 1000 * attempt, None, priority, whole=True))
+            wav = np.concatenate(parts) if parts else np.zeros(0, np.float32)
+            rate = letters / max(len(wav) / self.sr, 1e-3)
+            if 7 <= rate <= 22:
+                return wav
+            if abs(rate - 13) < best_gap:
+                best, best_gap = wav, abs(rate - 13)
+            log(f"retake: {rate:.1f} letters/s on try {attempt + 1}")
+        return best
+
+    def synth(self, sentences: list[str], seed: int = 0, progress=None, priority: int = 1):
+        np = self.np
+        pause = np.zeros(int(0.25 * self.sr), np.float32)
+        pieces = []
+        for i, s in enumerate(sentences):
+            pieces += [self.sentence(s, seed + i, priority), pause]
+            if progress:
+                progress(i + 1)
+        return np.concatenate(pieces[:-1]) if pieces else np.zeros(0, np.float32)
+
+
+def load_streamer(streams: int = STREAMS):
+    import torch
+
+    import stream
+    half = "bf16" if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else "fp16"
+    fast = torch.cuda.is_available()
+    s = stream.Streamer.load(VOICES[DEFAULT_VOICE]["profile"], dtype=(T3_DTYPE or half) if fast else "fp32", cfm_steps=CFM_STEPS,
+                             dec_cond=DEC_COND, ref=REF_OVERRIDE, graphs=fast, streams=streams, flow_half=fast,
+                             flow_graphs=fast)
+    s.warmup()
+    return s
+
+
 class Service:
     def __init__(self, keys: KeyStore, preload: bool = False):
         """preload: load the model before returning (the cloud opens its port only when the voice is ready);
@@ -176,6 +278,8 @@ class Service:
         self.ip_hits: dict[str, collections.deque] = collections.defaultdict(collections.deque)
         self.cache: collections.OrderedDict = collections.OrderedDict()
         self.jobs: dict[str, dict] = {}
+        self.streamer = None          # engine/stream.py Streamer when ENGINE is "stream" or "both"
+        self.sessions = 0             # open live (WebSocket / HTTP stream) sessions
         if preload:
             self._load()
             threading.Thread(target=self._loop, daemon=True).start()
@@ -184,9 +288,15 @@ class Service:
 
     # ---------------------------------------------------------------- GPU worker
     def _load(self) -> None:
-        self.voice = Voice(VOICES[DEFAULT_VOICE]["profile"])
-        self.voice.synth(["Salom."])  # warm-up: first CUDA kernels are slow
-        log("warm-up done, accepting requests")
+        t0 = time.time()
+        if ENGINE in ("classic", "both"):  # /v1/tts and jobs exactly as before: fp32, whole sentences, retakes
+            self.voice = Voice(VOICES[DEFAULT_VOICE]["profile"])
+            self.voice.synth(["Salom."])  # warm-up: first CUDA kernels are slow
+        if ENGINE in ("stream", "both"):   # live streaming (half precision + CUDA graphs)
+            self.streamer = load_streamer()
+            if self.voice is None:         # one engine for everything (the 4 GB laptop)
+                self.voice = StreamVoice(self.streamer)
+        log(f"{ENGINE} engine ready in {time.time() - t0:.0f} s, accepting requests")
 
     def _worker(self) -> None:
         try:
@@ -207,16 +317,19 @@ class Service:
                 if kind == "job":
                     self._run_job(payload)
                 else:
-                    fut.set_result(self._make(payload))
+                    fut.set_result(self._make(payload, priority=SLOT_PRIORITY[kind]))
             except Exception as e:  # noqa: BLE001
                 if fut:
                     fut.set_exception(e)
             finally:
                 self.busy = 0
 
-    def _make(self, req: dict, progress=None) -> dict:
+    def _make(self, req: dict, progress=None, priority: int = 1) -> dict:
         """GPU work only: raw float audio. Encoding happens on the caller's thread, so the GPU never waits for ffmpeg."""
-        audio = self.voice.synth(req["sentences"], req["seed"], progress)
+        if isinstance(self.voice, StreamVoice):
+            audio = self.voice.synth(req["sentences"], req["seed"], progress, priority=priority)
+        else:
+            audio = self.voice.synth(req["sentences"], req["seed"], progress)
         return {"spoken": req["spoken"], "pcm": audio, "sr": self.voice.sr, "seconds": round(len(audio) / self.voice.sr, 2)}
 
     def _run_job(self, job: dict) -> None:
@@ -225,7 +338,7 @@ class Service:
         def progress(done):
             job["done"] = done
         try:
-            raw = self._make(job["req"], progress)
+            raw = self._make(job["req"], progress, priority=SLOT_PRIORITY["job"])
             result = {"audio": encode(raw["pcm"], raw["sr"], job["req"]["format"]), "seconds": raw["seconds"]}
             job.update(status="done", result=result, seconds=result["seconds"], finished=time.time())
             self.keys.record(job["key"], len(job["req"]["text"]), result["seconds"])
@@ -379,6 +492,178 @@ class Handler(BaseHTTPRequestHandler):
         if self.service.voice is None:
             raise ApiError(503, "loading", "Ovoz modeli yuklanmoqda, bir daqiqadan keyin urinib ko‘ring.", 30)
 
+    def _stream_caller(self) -> dict:
+        """Live streaming needs a key: X-API-Key / Bearer header, or (browsers cannot set WebSocket headers)
+        ?token=tlst_... from /v1/stream/token, or ?key=tlsm_.... Never logged."""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        token = (q.get("token") or [""])[0]
+        if token:
+            rec = check_token(self.service.keys, token)
+            if rec is None:
+                raise ApiError(401, "bad_token", "Token noto‘g‘ri yoki muddati o‘tgan.")
+            return rec
+        raw = (q.get("key") or [""])[0]
+        if raw:
+            rec = self.service.keys.find(raw)
+            if rec is None:
+                raise ApiError(401, "bad_key", "API kalit noto‘g‘ri yoki o‘chirilgan.")
+            return rec
+        kind, rec = self._caller()
+        if kind != "key":
+            raise ApiError(401, "no_key", "Jonli ovoz faqat API kalit yoki token bilan ishlaydi.")
+        return rec
+
+    def _open_session(self, rec: dict) -> None:
+        s = self.service
+        self._ready()
+        if s.streamer is None:
+            raise ApiError(503, "no_stream", "Bu serverda jonli ovoz o‘chirilgan (TILSIM_ENGINE=classic).")
+        wait = s.keys.rate_wait(rec)
+        if wait:
+            raise ApiError(429, "rate_limited", f"Daqiqasiga {rec['per_minute']} so‘rovdan oshdi. {wait} s kuting.", wait)
+        with s.lock:
+            if s.sessions >= MAX_SESSIONS_PER_STREAM * s.streamer.streams:
+                raise ApiError(503, "busy", "Hozir jonli ovoz band. Birozdan keyin urinib ko‘ring.", 10)
+            s.sessions += 1
+
+    def _close_session(self) -> None:
+        with self.service.lock:
+            self.service.sessions -= 1
+
+    def _websocket(self) -> None:
+        """GET /v1/stream with Upgrade: websocket. Protocol: docs/API.md, «Jonli ovoz»."""
+        from live import LiveSession
+        from wsproto import Closed, WebSocket, accept_key
+
+        s = self.service
+        if (self.headers.get("Upgrade") or "").lower() != "websocket" or not self.headers.get("Sec-WebSocket-Key"):
+            raise ApiError(426, "upgrade_required", "Bu manzil WebSocket orqali ishlaydi (wss://.../v1/stream).")
+        rec = self._stream_caller()
+        self._open_session(rec)
+        try:
+            self.send_response(101, "Switching Protocols")
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", accept_key(self.headers["Sec-WebSocket-Key"]))
+            self.end_headers()
+            self.wfile.flush()
+            self.close_connection = True
+            ws = WebSocket(self.rfile, self.wfile)
+
+            def send_event(ev: dict) -> None:
+                try:
+                    ws.send_text(json.dumps(ev, ensure_ascii=False))
+                except Closed:
+                    pass
+
+            def send_audio(data: bytes) -> None:
+                try:
+                    ws.send_bytes(data)
+                except Closed:
+                    pass
+
+            def usage(chars: int, secs: float) -> None:
+                s.keys.record(rec, chars, secs)
+
+            session = LiveSession(s.streamer, send_event, send_audio, max_chars=s.keys.quota_left(rec),
+                                  on_usage=usage, priority=SLOT_PRIORITY["live"])
+            log(f"live {rec['name']}: connected")
+            send_event({"type": "ready", "sample_rate": 24000, "format": "pcm_s16le", "channels": 1})
+            try:
+                while True:
+                    kind, data = ws.recv()
+                    if kind != "text":
+                        send_event({"type": "error", "code": "bad_message", "message": "JSON matn yuboring."})
+                        continue
+                    try:
+                        msg = json.loads(data)
+                        mtype = msg.get("type")
+                    except (ValueError, AttributeError):
+                        send_event({"type": "error", "code": "bad_json"})
+                        continue
+                    if mtype == "text":
+                        session.feed(str(msg.get("text", "")), flush=bool(msg.get("flush")))
+                    elif mtype == "flush":
+                        session.flush()
+                    elif mtype == "cancel":
+                        session.cancel()
+                    elif mtype == "ping":
+                        send_event({"type": "pong"})
+                    else:
+                        send_event({"type": "error", "code": "bad_type", "message": "type: text | flush | cancel"})
+            except Closed:
+                pass
+            finally:
+                session.close()
+                ws.close()
+                log(f"live {rec['name']}: closed after {session.seconds:.1f} s of audio, {session.chars} chars")
+        finally:
+            self._close_session()
+
+    def _tts_stream(self, body: dict) -> None:
+        """POST /v1/tts/stream: chunked PCM16 / 24 kHz / mono as it is made. For clients without WebSocket."""
+        import threading
+
+        from live import pcm16
+        s = self.service
+        rec = self._stream_caller()
+        text = str(body.get("text", "")).strip()
+        if not text:
+            raise ApiError(400, "empty_text", "Matn yozing (\"text\").")
+        if len(text) > STREAM_MAX_CHARS:
+            raise ApiError(400, "too_long", f"Matn {STREAM_MAX_CHARS} belgidan oshmasin.")
+        left = s.keys.quota_left(rec)
+        if left is not None and len(text) > left:
+            raise ApiError(402, "quota_exceeded", f"Oylik limit tugadi: {left} belgi qoldi.")
+        self._open_session(rec)
+        cancel, seconds, t0 = threading.Event(), 0.0, time.time()
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/L16; rate=24000; channels=1")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Tilsim-Sample-Rate", "24000")
+            self.end_headers()
+            try:
+                for ev in s.streamer.stream(text, cancel=cancel, priority=SLOT_PRIORITY["key"]):
+                    if ev["type"] == "audio" and len(ev["pcm"]):
+                        chunk = pcm16(ev["pcm"])
+                        self.wfile.write(f"{len(chunk):X}\r\n".encode() + chunk + b"\r\n")
+                        self.wfile.flush()
+                        seconds += len(ev["pcm"]) / 24000
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except OSError:  # the client hung up: stop making audio nobody hears
+                cancel.set()
+                self.close_connection = True
+        finally:
+            self._close_session()
+        s.keys.record(rec, len(text), seconds)
+        log(f"stream {rec['name']} {len(text)} chars -> {seconds:.1f} s audio in {time.time() - t0:.1f} s")
+
+    def _warm(self) -> None:
+        """POST /v1/warm: wakes the model (on the cloud the request itself starts the container) and reports."""
+        s = self.service
+        self._stream_caller()
+        t0 = time.time()
+        while s.voice is None and time.time() - t0 < 120:
+            time.sleep(0.5)
+        self._ready()
+        self._json(200, {"ok": True, "ready": True, "stream": s.streamer is not None,
+                         "streams": s.streamer.streams if s.streamer else 0, "waited_ms": int(1000 * (time.time() - t0))})
+
+    def _token(self, body: dict) -> None:
+        """POST /v1/stream/token {"ttl": seconds}: a browser token for /v1/stream?token=..."""
+        kind, rec = self._caller()
+        if kind != "key":
+            raise ApiError(401, "no_key", "Token faqat API kalit bilan olinadi.")
+        try:
+            ttl = max(30, min(int(body.get("ttl", 900)), TOKEN_MAX_TTL))
+        except (TypeError, ValueError):
+            raise ApiError(400, "bad_ttl", "ttl soniyada, butun son.") from None
+        token, exp = make_token(rec, ttl)
+        self._json(200, {"token": token, "expires": exp, "ttl": ttl})
+
     def _key_limits(self, rec: dict, chars: int) -> None:
         wait = self.service.keys.rate_wait(rec)
         if wait:
@@ -406,7 +691,10 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/v1/health"):
                 return self._json(200, {"ok": True, "ready": s.voice is not None, "busy": s.busy,
                                         "queue": s.jobs_q.qsize(), "max_chars": DEMO_MAX_CHARS, "voice": "Asoschi",
+                                        "stream": s.streamer is not None, "sessions": s.sessions,
                                         "docs": "https://github.com/JAVOHIR120/tilsim/blob/main/docs/API.md"})
+            if path == "/v1/stream":
+                return self._websocket()
             if path == "/v1/voices":
                 return self._json(200, {"voices": [{"id": vid, "sample_rate": 24000,
                                                     **{k: v for k, v in info.items() if k != "profile"}}
@@ -445,6 +733,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/v1/tts":
                 return self._tts(body)
+            if path == "/v1/tts/stream":
+                return self._tts_stream(body)
+            if path == "/v1/warm":
+                return self._warm()
+            if path == "/v1/stream/token":
+                return self._token(body)
             if path == "/v1/jobs":
                 return self._new_job(body)
             if path == "/v1/normalize":
