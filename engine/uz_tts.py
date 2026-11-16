@@ -135,6 +135,31 @@ def load_engine(device: str | None = None, base_dir: Path = BASE_DIR, adapter_di
     return ChatterboxTTS(t3, s3gen, ve, tokenizer, device, conds=conds)
 
 
+def load_english_t3(device: str, base_dir: Path = BASE_DIR, adapter_dir: Path = ADAPTER_DIR,
+                    spkr: str = "base", dtype: torch.dtype = torch.float32) -> tuple[T3, EnTokenizer]:
+    """The stock Chatterbox English T3 (704 text tokens, no Uzbek LoRA) and its own tokenizer: the founder's voice
+    speaking English without the Uzbek accent the LoRA teaches. spkr="uz" takes the LoRA'd speaker projection
+    (W + 2.0 * B @ A) instead of the stock one, so both can be measured.
+    dtype: built straight in that precision, so a second model never needs a full fp32 copy on the 4 GB card."""
+    old = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(dtype)
+        with torch.device(device):
+            t3 = T3(T3Config.english_only())
+    finally:
+        torch.set_default_dtype(old)
+    _copy_weights(t3, base_dir / "t3_cfg.safetensors")
+    if spkr == "uz":
+        lin = t3.cond_enc.spkr_enc
+        with safe_open(str(adapter_dir / "adapter_model.safetensors"), framework="pt", device="cpu") as f:
+            key = "base_model.model.cond_enc.spkr_enc.lora_{}.weight"
+            a, b = f.get_tensor(key.format("A")).to(lin.weight.device), f.get_tensor(key.format("B")).to(lin.weight.device)
+        with torch.no_grad():   # the update in fp32, then rounded once into the model's precision
+            lin.weight.copy_((lin.weight.float() + LORA_SCALE * (b.float() @ a.float())).to(lin.weight.dtype))
+    t3.to(device).eval()
+    return t3, EnTokenizer(str(base_dir / "tokenizer.json"))
+
+
 def trim(x: np.ndarray, sr: int, head_pad: float = 0.05, tail_pad: float = 0.15) -> np.ndarray:
     """Cut silence around the speech, and drop sounds left after the last word (breaths, gasps, coughs).
 
@@ -211,10 +236,11 @@ def _continue_tokens(t3: T3, t3_cond, text_tokens: torch.Tensor, prefix: torch.T
                                  alignment_stream_analyzer=None)
     device = embeds.device
     bos = torch.tensor([[t3.hp.start_speech_token]], dtype=torch.long, device=device)
-    n_pre = prefix.numel()
-    head = torch.cat([t3.speech_emb(bos) + t3.speech_pos_emb.get_fixed_embedding(0),
-                      t3.speech_emb(prefix.view(1, -1)) +
-                      t3.speech_pos_emb.get_fixed_embedding(torch.arange(1, n_pre + 1, device=device))], dim=1)
+    n_pre = 0 if prefix is None else prefix.numel()   # English mode may start from nothing (stock Chatterbox)
+    head = t3.speech_emb(bos) + t3.speech_pos_emb.get_fixed_embedding(0)
+    if n_pre:
+        head = torch.cat([head, t3.speech_emb(prefix.view(1, -1)) +
+                          t3.speech_pos_emb.get_fixed_embedding(torch.arange(1, n_pre + 1, device=device))], dim=1)
     out = model(inputs_embeds=torch.cat([embeds, torch.cat([head, head])], dim=1), past_key_values=None,
                 use_cache=True, output_attentions=False, output_hidden_states=True, return_dict=True)
     past = out.past_key_values
@@ -222,7 +248,7 @@ def _continue_tokens(t3: T3, t3_cond, text_tokens: torch.Tensor, prefix: torch.T
     min_p_w, top_p_w = MinPLogitsWarper(min_p=min_p), TopPLogitsWarper(top_p=top_p)
     generated, predicted = bos.clone(), []
     for i in range(max_new_tokens):
-        step = out.logits[:, -1, :]
+        step = out.logits[:, -1, :].float()   # a no-op in fp32; half-precision models sample in fp32 too
         logits = step[0:1] + cfg_weight * (step[0:1] - step[1:2])
         logits = rep(generated, logits)
         if temperature != 1.0:

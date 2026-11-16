@@ -29,7 +29,7 @@ from pathlib import Path
 import modal
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = "tilsim"
+APP = os.environ.get("TILSIM_APP", "tilsim")   # "tilsim-dev": a separate copy with its own URL, for tests
 GPU = os.environ.get("TILSIM_GPU", "T4")
 CODE = "/root/voicelab"
 WEIGHTS = "/weights"
@@ -41,6 +41,7 @@ BASE = ("ResembleAI/chatterbox", "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18", {
     "s3gen.safetensors": "2b78103c654207393955e4900aac14a12de8ef25f4b09424f1ef91941f161d4e",
     "ve.safetensors": "f0921cab452fa278bc25cd23ffd59d36f816d7dc5181dd1bef9751a7fb61f63c",
     "conds.pt": "6552d70568833628ba019c6b03459e77fe71ca197d5c560cef9411bee9d87f4e",
+    "tokenizer.json": "d71e3a44eabb1784df9a68e9f95b251ecbf1a7af6a9f50835856b2ca9d8c14a5",   # the stock English tokenizer (English mode)
 })
 LORA = ("UAzimov/Uzbek-tts-chatterbox", "23d08097d80512006065c5e1273e7157abd5cd1f", {
     "adapter_model.safetensors": "25f840509f5c4b684bfa3cbe4cd3a187a844c1dff41832dc7ee5057218dd8202",
@@ -97,11 +98,13 @@ image = (
           "TILSIM_DEMO_DAILY_MAX": DEMO_DAILY_MAX, "PYTHONUNBUFFERED": "1",
           # live streaming: engine/stream.py, fp16 + CUDA graphs on the T4, 3 parallel streams (docs/STREAMING.md)
           "TILSIM_ENGINE": os.environ.get("TILSIM_ENGINE", "both"), "TILSIM_STREAMS": "2",
-          "TILSIM_CFM_STEPS": os.environ.get("TILSIM_CFM_STEPS", "6"), "TILSIM_DEC_COND": "10"})  # live T3 in fp16: fp32 on a T4 is too slow (RTF 0.9-1.1, docs/STREAMING.md)
+          "TILSIM_CFM_STEPS": os.environ.get("TILSIM_CFM_STEPS", "6"), "TILSIM_DEC_COND": "10",
+          "TILSIM_EN": os.environ.get("TILSIM_EN", "0")})   # English mode: a second T3 (~1 GB), see docs/ROADMAP.md  # live T3 in fp16: fp32 on a T4 is too slow (RTF 0.9-1.1, docs/STREAMING.md)
     .add_local_dir(ROOT / "uznorm", f"{CODE}/uznorm", ignore=["__pycache__", "*.pyc"])
     .add_local_dir(ROOT / "engine", f"{CODE}/engine", ignore=["__pycache__", "*.pyc"])
     .add_local_file(ROOT / "tools" / "bench_stream.py", f"{CODE}/tools/bench_stream.py")
     .add_local_file(ROOT / "data" / "voices" / "ovozim.json", f"{CODE}/data/voices/ovozim.json")
+    .add_local_dir(ROOT / "data" / "voices" / "english", f"{CODE}/data/voices/english")
     .add_local_file(REF_WAV, f"{CODE}/voice/ref.wav")
 )
 admin_image = modal.Image.debian_slim(python_version="3.12").add_local_file(
@@ -114,7 +117,7 @@ data = modal.Volume.from_name("tilsim-data", create_if_missing=True)  # API keys
 @app.function(image=image, gpu=GPU, cpu=2.0, memory=8192, volumes={"/data": data},
               max_containers=1, scaledown_window=90, timeout=900)
 @modal.concurrent(max_inputs=32)
-@modal.web_server(8000, startup_timeout=420, label="tilsim-api")
+@modal.web_server(8000, startup_timeout=420, label=f"{APP}-api")
 def api():
     """Loads the model, then opens port 8000; Modal holds the first requests until then."""
     import threading
@@ -130,11 +133,11 @@ def api():
 
 
 @app.function(image=image, gpu=GPU, cpu=2.0, memory=8192, timeout=1800, max_containers=1)
-def bench_gpu(args: list[str]) -> str:
+def bench_gpu(args: list[str], env: dict | None = None) -> str:
     """tools/bench_stream.py on the cloud GPU (warm: the script warms up before measuring)."""
     import subprocess
     out = subprocess.run([sys.executable, "-X", "utf8", f"{CODE}/tools/bench_stream.py", *args],
-                         capture_output=True, text=True, cwd=CODE)
+                         capture_output=True, text=True, cwd=CODE, env={**os.environ, **(env or {})})
     noise = ("Warning", "warn(", "deprecat", "LoRACompatible", "sdp_kernel", "self.gen = func")
     lines = [ln for ln in (out.stdout + out.stderr).splitlines() if not any(n in ln for n in noise)]
     return "\n".join(lines[-80:])

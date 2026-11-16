@@ -127,6 +127,9 @@ await fs.promises.writeFile('salom.ogg', Buffer.from(await r.arrayBuffer()));
 | `voice` | yo‘q | `asoschi` (standart) |
 | `format` | yo‘q | `mp3` (standart, 96 kbit/s), `wav` (16-bit, 24 kHz), `ogg` (Opus 48 kbit/s, Telegram `sendVoice` uchun) |
 | `seed` | yo‘q | Butun son, standart `0`. Natija yoqmasa, boshqa son bering: ovoz boshqacha o‘qiladi. |
+| `lang` | yo‘q | `uz` (standart), `en` yoki `auto`. 10-bo‘limga qarang. |
+| `emotion` | yo‘q | Hozircha faqat `neytral` (10-bo‘lim) |
+| `intensity` | yo‘q | Emotsiya kuchi, `0` dan `1` gacha; emotsiyalar yoqilganda ishlaydi |
 
 **Javob:** audio baytlar (`Content-Type: audio/mpeg | audio/wav | audio/ogg`) va qo‘shimcha sarlavhalar:
 
@@ -253,6 +256,10 @@ Kalit va token hech qachon log'ga yozilmaydi.
 ```
 
 - `text`: istalgan kattalikdagi bo‘lak. Gap tugashi (`. ! ? …` va undan keyingi bosh harf) bilan aytish boshlanadi. Gap tugamasdan 120 belgidan oshsa, oxirgi vergulda kesiladi.
+  - Ixtiyoriy maydonlar: `lang`, `emotion`, `intensity` (10-bo‘lim). Ular shu xabardan keyin tugaydigan har bir gapga
+    qo‘llanadi va o‘zgartirilguncha keyingi xabarlarda ham amal qiladi. Har bo‘lakda qayta yuborish shart emas.
+  - Noto‘g‘ri qiymat (`bad_lang`, `bad_emotion`, `bad_intensity`, `lang_unavailable`, `emotion_unavailable`) faqat o‘sha xabarni o‘tkazib
+    yuboradi, ulanish yopilmaydi.
 - `flush`: navbat (turn) tugadi. Qolgan matn aytiladi, keyin `end` keladi.
 - `cancel`: hozirgi gap taxminan bitta token (~15 ms) ichida to‘xtaydi, navbatdagi gaplar tashlanadi va `{"type":"end","reason":"cancelled"}` keladi. Ulanish ochiq qoladi, keyingi navbatni yuboravering.
 
@@ -265,7 +272,7 @@ Kalit va token hech qachon log'ga yozilmaydi.
 |---|---|
 | `{"type":"ready","sample_rate":24000,"format":"pcm_s16le","channels":1}` | ulangandan so‘ng |
 | `{"type":"start"}` | navbatning birinchi ovozi oldidan |
-| `{"type":"mark","text":"Describe a place you like to visit."}` | har gap aytila boshlanganda (subtitr uchun) |
+| `{"type":"mark","text":"Describe a place you like to visit.","lang":"en","emotion":"neytral"}` | har gap aytila boshlanganda (subtitr uchun); `lang` va `emotion` shu gap qaysi til va emotsiyada o‘qilayotganini aytadi |
 | `{"type":"end","reason":"done"}` yoki `"cancelled"` | navbat tugaganda yoki to‘xtatilganda |
 | `{"type":"error","code":"quota_exceeded" \| "failed" \| "bad_json" \| "bad_type"}` | xato bo‘lganda |
 
@@ -356,6 +363,7 @@ curl -N -X POST "$TILSIM_URL/v1/tts/stream" -H "X-API-Key: $TILSIM_API_KEY" \
 Imtihonchi o‘zbekcha gapiradi, lekin inglizcha savollarni ham aytadi: «Endi Part 2 ga o‘tamiz. Describe a place you like to visit.».
 
 - **Qanday o‘qiladi:** Tilsim inglizcha qismlarni topib, o‘zbekcha talaffuz yozuviga o‘giradi («Diskrayb e pleys yu layk tu vizit»). Natijada mahalliy IELTS o‘qituvchisi kabi aniq, o‘zbekcha urg‘uli inglizcha chiqadi. Lug‘at: `uznorm/data/english.tsv`.
+- **Toza inglizcha kerak bo‘lsa,** `"lang": "auto"` yoki `"lang": "en"` yuboring (10-bo‘lim). Unda inglizcha gaplar urg‘usiz o‘qiladi.
 - **So‘z noto‘g‘ri chiqsa,** uni shu lug‘atga qo‘shing.
 - **Ikki tilda ham bo‘la oladigan so‘zlar** (band, test, may, in) yolg‘iz kelganda o‘zbekcha qoladi.
 
@@ -364,3 +372,57 @@ Imtihonchi o‘zbekcha gapiradi, lekin inglizcha savollarni ham aytadi: «Endi P
 - **Hisob:** har navbat oxirida aytilgan belgilar va yuborilgan audio soniyalari kalit hisobiga yoziladi (`/v1/usage`).
 - **Oylik limit:** u tugasa, `{"type":"error","code":"quota_exceeded"}` keladi.
 - **Bir vaqtdagi oqimlar:** noutbukda 1, Modal T4'da 2. Bitta suhbat to‘liq tezlikda ishlaydi. Ikki suhbat bir paytda gapirsa, gaplar orasida qisqa pauzalar bo‘lishi mumkin (T4 ikkitasiga yetmaydi, `docs/STREAMING.md`). Har oqimga 2 tagacha ulanish ochilishi mumkin, ortiqchasi `503 busy` oladi.
+
+## 10. Til va emotsiya
+
+Uchta ixtiyoriy maydon `/v1/tts`, `/v1/jobs`, `/v1/tts/stream` va `/v1/stream` ning `text` xabarida ishlaydi.
+**Ularni yubormasangiz, natija avvalgidek bit-bit bir xil bo‘ladi** (2026-11-16 da tekshirilgan), shuning uchun eski mijozlar
+o‘zgarishsiz ishlayveradi.
+
+| Maydon | Qiymatlar | Standart |
+|---|---|---|
+| `lang` | `uz`: o‘zbekcha; `en`: inglizcha, asoschi ovozida, Amerikacha talaffuz bilan; `auto`: har gap uchun tilni o‘zi aniqlaydi | `uz` |
+| `emotion` | hozircha faqat `neytral` (pastga qarang) | `neytral` |
+| `intensity` | `0` … `1`; emotsiyalar yoqilganda ishlaydi | `0.6` |
+
+### Til
+
+- **`en`:** matn inglizcha o‘qiladi, o‘zbekcha urg‘usiz. Raqamlar Amerikacha aytiladi: «9:30» → «nine thirty», «$45» → «forty-five dollars».
+- **`auto`:** til gap chegarasida almashadi.
+  - «:» dan keyin 3 so‘zdan uzun inglizcha qism kelsa, u alohida inglizcha aytiladi: «Savol shunday: Do you work or are you a student?».
+  - 3 so‘zgacha bo‘lgan inglizcha iqtiboslar («"fluency" va "coherence"») o‘zbekcha gap ichida qoladi va o‘zbekcha talaffuz yozuvi bilan o‘qiladi (9-bo‘lim).
+- **`uz`:** avvalgidek. Inglizcha so‘zlar o‘zbekcha talaffuz yozuvi bilan o‘qiladi.
+- **Qayerda bor:** bulut serverida (Modal T4). Noutbukning 4 GB kartasiga ikkinchi model sig‘maydi, u yerda `lang: "en"` → `400 lang_unavailable`.
+  `auto` esa noutbukda hammasini o‘zbekcha o‘qiydi.
+- **Sifat** (40 inglizcha gap, 2026-11-16):
+  - inglizcha Whisper CER 0,82%;
+  - ko‘r judge «native American» bahosi 8,3/10 (avval 2,9);
+  - birinchi ovoz T4'da 0,55 s, tildan tilga o‘tish sezilmaydi.
+- **Ovoz haqida:** talaffuz va ohangni Amerikalik erkak ovozidan olingan namuna beradi (CMU ARCTIC, ruxsatli litsenziya), tembr esa asoschiniki.
+  O‘zbekchaga qaraganda ovoz biroz boshqacha eshitilishi mumkin (o‘xshashlik 0,84). Asoschi buni eshitib tanlagan.
+
+### Emotsiya: hozircha mavjud emas
+
+- Emotsiyalar ustida ish ketyapti. Hozircha `neytral` dan boshqa qiymat `400 emotion_unavailable` qaytaradi.
+  Jonli oqimda xato hodisasi keladi, ulanish yopilmaydi.
+- Emotsiyalar tayyor bo‘lganda `/v1/voices` dagi `emotions` ro‘yxatida paydo bo‘ladi. API o‘zgarmaydi, kodingizni o‘zgartirish shart emas.
+- Rejalashtirilgan ro‘yxat: `iliq`, `quvnoq`, `hayajonli`, `xotirjam`, `jiddiy`, `hamdard`, `hayron`. Kuchi `intensity` (0–1) bilan beriladi.
+- Hozircha ohangni matn yaxshi boshqaradi: `!`, `?` belgilari va emotsiyaga mos so‘zlar.
+
+### Misollar
+
+```json
+{"type": "text", "text": "Endi Part 2 ga o‘tamiz. Describe a place you like to visit.", "lang": "auto", "flush": true}
+{"type": "text", "text": "Thank you. That is the end of the speaking test.", "lang": "en", "flush": true}
+```
+
+```bash
+curl -X POST "$TILSIM_URL/v1/tts" -H "X-API-Key: $TILSIM_API_KEY" -H "Content-Type: application/json"      -d '{"text": "Describe a place you visited that you would like to return to.", "lang": "en"}' -o savol.mp3
+```
+
+- **`mark` hodisasi** gap qaysi tilda o‘qilayotganini aytadi: `{"type":"mark","text":"…","lang":"en","emotion":"neytral"}`.
+- **`GET /v1/voices`** har ovoz uchun `languages`, `emotions` va `intensity` (min, max, default) ni qaytaradi.
+
+### Mualliflik eslatmalari
+
+- Inglizcha talaffuz namunasi: CMU ARCTIC (Carnegie Mellon University). Litsenziya matni `data/voices/english/CMU_ARCTIC_COPYING.txt` da.

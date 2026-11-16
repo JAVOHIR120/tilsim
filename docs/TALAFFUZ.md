@@ -111,6 +111,18 @@ va qo'shimchali shakllarni ham qamraydi.
 Sinov gaplari: [`data/eval/test_uz.tsv`](../data/eval/test_uz.tsv). Ularda juft so'zlar, qo'sh undoshlar, so'roq va undov gaplar, raqamlar,
 o'zlashma so'zlar, uzun hikoya, kirill va yangi alifbodagi yozuvlar bor.
 
+## 6. Inglizcha rejim (`lang: "en"`)
+
+O‘zbekcha model inglizchani o‘zbekcha urg‘u bilan o‘qiydi, chunki LoRA unga o‘zbek tovushlarini o‘rgatgan.
+Shuning uchun inglizcha gaplar boshqa yo‘l bilan aytiladi:
+- **Model:** Chatterbox'ning o‘zbekcha LoRA'siz inglizcha modeli, o‘zining 704 belgili tokenizeri bilan.
+- **Matn:** `uznorm/en_normalize.py` raqamlarni Amerikacha o‘qiydi: «1998» → «nineteen ninety-eight».
+- **Urg‘u:** asosan speaker embedding'dan keladi, ya’ni modelga berilgan «ovoz pasporti»dan.
+  - Asoschining o‘zbekcha nutqidan olingan pasport bilan judge «South Asian» urg‘u eshitdi: 4,9/10.
+  - Amerikalik erkak ovozining pasporti bilan (CMU ARCTIC `bdl`) natija 8,3/10, ko‘pchilik gapda «General American».
+  - Tembr baribir asoschiniki: uni S3Gen asoschining yozuvidan oladi.
+- **Qiyin tovushlar** (th, w/v, r, so‘z oxiridagi undoshlar): inglizcha Whisper CER 0,82% (40 gap). Avvalgi yo‘lda 9,19% edi.
+
 ## Manbalar
 
 - Yangi alifbo:

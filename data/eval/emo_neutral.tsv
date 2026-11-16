@@ -1,0 +1,12 @@
+# Emotion-neutral sentences for the blind recognition test (2026-11-15): the same plain text in every mood,
+# so a judge can only hear the emotion in the voice, not read it from the words. id<TAB>category<TAB>text
+n01	neutral-text	Bugun darsimizda o'tgan zamon fe'llarini takrorlaymiz.
+n02	neutral-text	Poyezd Toshkentdan ertalab soat sakkizda jo'naydi.
+n03	neutral-text	Hisobingizdagi qoldiq har oyning birinchi kuni yangilanadi.
+n04	neutral-text	Kitobning uchinchi bobi shahar tarixiga bag'ishlangan.
+n05	neutral-text	Ro'yxatdan o'tish uchun telefon raqamingizni kiriting.
+n06	neutral-text	Ertaga havo bulutli bo'ladi, kechqurun yomg'ir yog'ishi mumkin.
+n07	neutral-text	Imtihon uch qismdan iborat va taxminan o'n besh daqiqa davom etadi.
+n08	neutral-text	Do'kon dushanbadan shanbagacha ishlaydi.
+n09	neutral-text	Bu xonada o'n ikkita stol va bitta katta doska bor.
+n10	neutral-text	Keyingi bekat Chilonzor, eshiklar o'ng tomondan ochiladi.

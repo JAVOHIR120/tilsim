@@ -27,8 +27,10 @@ Speed switches (measured in tools/bench_stream.py, see docs/STREAMING.md):
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +40,8 @@ import torch.nn.functional as F
 import uz_tts
 from live import SlotPool  # noqa: F401  (torch-free, shared with the tests)
 from uznorm import for_model, normalize, split_sentences
+from uznorm.en_normalize import normalize_en
+from uznorm.lang import segments
 
 ROOT = Path(__file__).resolve().parents[1]
 SR = 24000
@@ -57,6 +61,41 @@ TOKEN_SEC = 0.04       # seconds of speech per token (25 tokens/s)
 MARGIN = 0.08          # seconds of audio we want left in the listener's buffer when the next chunk lands
 STOP_SPEECH = 6561     # speech token ids at or above this are special
 DTYPES = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+LANGS = ("uz", "en", "auto")
+EMOTIONS = ("neytral", "iliq", "quvnoq", "hayajonli", "xotirjam", "jiddiy", "hamdard", "hayron")
+DEFAULT_EMOTION = "neytral"
+DEFAULT_INTENSITY = 0.6   # an emotion asked for without a strength: clear, not theatrical
+
+
+@dataclass
+class Style:
+    """How one sentence is voiced: its language and emotion, and the model pieces that produce them."""
+    lang: str
+    emotion: str
+    intensity: float
+    t3: object            # the T3 to use: Uzbek (LoRA merged) or stock English
+    tokenizer: object
+    cond: object          # T3Cond: speaker embedding, voice-prompt tokens, emotion_adv (exaggeration)
+    prefix: object        # uz_tts.Prefix the sentence continues from, or None
+    params: dict          # temperature, exaggeration, cfg_weight, repetition_penalty
+    graph: str | None     # GraphDecoder twin for these weights; None = the main (Uzbek) decoder
+
+
+def blend(lo: dict, hi: dict, x: float) -> dict:
+    """Settings for strength x in [0, 1]: lo at 0, hi at 1, a straight line between (repetition penalty stays)."""
+    out = dict(lo)
+    for k, v in hi.items():
+        if k in lo and k != "repetition_penalty":
+            out[k] = float(lo[k]) + (float(v) - float(lo[k])) * x
+    return out
+
+
+def prompt_tokens(engine, wav_path, seconds: float = 6.0) -> torch.Tensor:
+    """T3 voice-prompt speech tokens from a clip (what prepare_conditionals takes from the reference)."""
+    import librosa
+    wav = librosa.load(str(wav_path), sr=16000)[0][:int(seconds * 16000)]
+    toks, _ = engine.s3gen.tokenizer.forward([wav], max_len=engine.t3.hp.speech_cond_prompt_len)
+    return torch.atleast_2d(toks).to(engine.device)
 
 
 def split_text(text: str) -> list[str]:
@@ -103,8 +142,12 @@ class Pacer:
 
 class Streamer:
     def __init__(self, engine, prefix, params: dict, dtype: str = "fp32", cfm_steps: int = 10,
-                 first_chunk: int | None = None, chunk: int | None = None, decoders: list | None = None):
+                 first_chunk: int | None = None, chunk: int | None = None, decoders: list | None = None,
+                 english: dict | None = None, bank: dict | None = None):
         self.engine, self.prefix, self.params = engine, prefix, params
+        self.english = english   # {"t3", "tokenizer", "cond", "prefix", "params"} for lang="en", or None
+        self.bank = bank or {}   # emotion -> {"params", "en_params", "prefix", "prompt", "min_prefix"}
+        self._conds: dict = {}
         self.dtype_name, self.dtype = dtype, DTYPES[dtype]
         self.cfm_steps = cfm_steps
         self.first_chunk, self.chunk = first_chunk or FIRST_CHUNK, chunk or CHUNK
@@ -128,7 +171,6 @@ class Streamer:
              first_chunk: int | None = None, chunk: int | None = None, dec_cond: float | None = None,
              ref: str | None = None, graphs: bool = False, streams: int = 1, max_len: int = 1400,
              flow_half: bool = False, flow_graphs: bool = False) -> "Streamer":
-        import os
         profile = json.loads((ROOT / "data" / "voices" / f"{profile_name}.json").read_text(encoding="utf-8"))
         params = {**uz_tts.PARAMS, **profile.get("params", {})}
         ref = ref or os.environ.get("TILSIM_REF") or profile["ref"]
@@ -154,6 +196,8 @@ class Streamer:
             longest = prompt + TOKEN_FRAMES * (CONTEXT + max(chunk or CHUNK, first_chunk or FIRST_CHUNK) + HOLDBACK + 8)
             sizes = [b for b in range(256, 1408, 64) if b >= prompt + TOKEN_FRAMES * 8]
             FlowGraphs(engine.s3gen, buckets=[b for b in sizes if b <= longest + 64]).capture()
+        english = cls._load_english(engine, profile, dtype) if os.environ.get("TILSIM_EN", "0") == "1" else None
+        bank = cls._load_bank(engine, profile)
         decoders = None
         if graphs and torch.cuda.is_available():
             from fastt3 import GraphDecoder
@@ -161,29 +205,131 @@ class Streamer:
             for _ in range(max(1, streams)):
                 d = GraphDecoder(engine.t3, max_len=max_len)
                 d.capture()
+                if english is not None:   # same KV cache, second graph over the stock English weights
+                    d.twin("en", english["t3"])
                 decoders.append(d)
-        return cls(engine, prefix, params, dtype, cfm_steps, first_chunk, chunk, decoders)
+        return cls(engine, prefix, params, dtype, cfm_steps, first_chunk, chunk, decoders, english, bank)
+
+    @staticmethod
+    def _load_english(engine, profile: dict, dtype: str) -> dict | None:
+        """English mode (profile["english"]): the stock Chatterbox English T3 next to the Uzbek one, same voice."""
+        cfg = profile.get("english")
+        if not cfg:
+            return None
+        from chatterbox.models.t3.modules.cond_enc import T3Cond
+        t3, tok = uz_tts.load_english_t3(engine.device, spkr=cfg.get("spkr", "base"), dtype=DTYPES[dtype])
+        params = {**uz_tts.PARAMS, **cfg.get("params", {})}
+        base = engine.conds.t3
+        prompt = prompt_tokens(engine, ROOT / cfg["prompt_wav"]) if cfg.get("prompt_wav") else base.cond_prompt_speech_tokens
+        speaker = base.speaker_emb
+        if cfg.get("speaker_npy"):
+            # T3's speaker embedding sets the accent (docs/ROADMAP.md, 2026-11-16): a native US speaker's embedding,
+            # mixed with the founder's by spk_mix (1 = native only). The timbre still comes from S3Gen's reference.
+            import numpy as np
+            native = torch.from_numpy(np.load(ROOT / cfg["speaker_npy"])).view(1, -1).to(engine.device).float()
+            own = speaker.float()
+            x = float(cfg.get("spk_mix", 1.0))
+            mix = (1 - x) * own / own.norm() + x * native / native.norm()
+            speaker = (mix / mix.norm() * own.norm()).to(speaker.dtype)
+        cond = T3Cond(speaker_emb=speaker, cond_prompt_speech_tokens=prompt,
+                      emotion_adv=params["exaggeration"] * torch.ones(1, 1, 1)).to(device=engine.device,
+                                                                              dtype=DTYPES[dtype])
+        prefix = None
+        if cfg.get("prefix_wav"):
+            prefix = uz_tts.Prefix(engine, ROOT / cfg["prefix_wav"], cfg["prefix_end"], cfg["prefix_text"])
+            prefix.text = cfg["prefix_text"]   # English: not through the Uzbek normaliser
+        return {"t3": t3, "tokenizer": tok, "cond": cond, "prefix": prefix, "params": params}
+
+    @staticmethod
+    def _load_bank(engine, profile: dict) -> dict:
+        """The emotion bank (profile["emotions"]): per emotion its settings at full strength, and optionally a clip
+        of the voice in that mood to continue from (prefix) and to use as the voice prompt."""
+        bank = {}
+        for name, e in (profile.get("emotions") or {}).items():
+            entry = {"params": e.get("params", {}), "en_params": e.get("en_params", e.get("params", {})),
+                     "min_prefix": float(e.get("min_prefix", 0.2)), "prefix": None, "prompt": None}
+            if e.get("prefix_wav"):
+                entry["prefix"] = uz_tts.Prefix(engine, ROOT / e["prefix_wav"], e["prefix_end"], e["prefix_text"])
+            if e.get("prompt_wav"):
+                entry["prompt"] = prompt_tokens(engine, ROOT / e["prompt_wav"])
+            bank[name] = entry
+        return bank
 
     def warmup(self) -> None:
         """First CUDA kernels and allocator growth are slow; pay for them before the first listener."""
         for text in ("Salom.", "Assalomu alaykum, qalaysiz?"):
             for _ in self.stream(text):
                 pass
+        if self.english is not None:
+            for _ in self.stream("Hello, how are you?", lang="en"):
+                pass
+
+    # ------------------------------------------------------------ styles
+    def style(self, lang: str = "uz", emotion: str | None = None, intensity: float | None = None) -> Style:
+        """Language + emotion -> the model pieces for a sentence. lang="uz", no emotion: exactly the old path."""
+        emotion = emotion or DEFAULT_EMOTION
+        if lang not in ("uz", "en"):
+            raise ValueError(f"lang must be uz or en here, not {lang!r}")
+        if emotion not in EMOTIONS:
+            raise ValueError(f"unknown emotion {emotion!r}")
+        if lang == "en" and self.english is None:
+            raise ValueError("English mode is not loaded on this server")
+        if emotion == DEFAULT_EMOTION:
+            x = 0.0
+        else:
+            x = DEFAULT_INTENSITY if intensity is None else min(1.0, max(0.0, float(intensity)))
+        if lang == "en":
+            en = self.english
+            t3, tok, base, prefix, params = en["t3"], en["tokenizer"], en["cond"], en["prefix"], dict(en["params"])
+        else:
+            t3, tok, base, prefix = self.engine.t3, self.engine.tokenizer, self.engine.conds.t3, self.prefix
+            params = dict(self.params)
+        prompt = base.cond_prompt_speech_tokens
+        e = self.bank.get(emotion)
+        if e is not None and x > 0:
+            params = blend(params, e["en_params" if lang == "en" else "params"], x)
+            if lang == "uz" and x >= e["min_prefix"]:   # mood clips are Uzbek speech: Uzbek sentences only
+                prefix = e["prefix"] or prefix
+                prompt = e["prompt"] if e["prompt"] is not None else prompt
+        return Style(lang, emotion, x, t3, tok, self._cond(base, prompt, params["exaggeration"]), prefix, params,
+                     "en" if lang == "en" else None)
+
+    def _cond(self, base, prompt, exaggeration: float):
+        """The T3Cond for a voice prompt + exaggeration; the loaded one itself when nothing changes (old path)."""
+        if prompt is base.cond_prompt_speech_tokens and float(base.emotion_adv.view(-1)[0]) == float(exaggeration):
+            return base
+        key = (id(base), id(prompt), round(float(exaggeration), 4))
+        if key not in self._conds:
+            from chatterbox.models.t3.modules.cond_enc import T3Cond
+            self._conds[key] = T3Cond(speaker_emb=base.speaker_emb, cond_prompt_speech_tokens=prompt,
+                                      emotion_adv=float(exaggeration) * torch.ones(1, 1, 1)).to(
+                device=self.device, dtype=base.speaker_emb.dtype)
+        return self._conds[key]
 
     # ------------------------------------------------------------ public
+    def plan(self, text: str, lang: str = "uz") -> list[tuple[str, str]]:
+        """[(lang, original sentence)]. lang="auto" detects per sentence (uznorm/lang.py); without English mode
+        loaded everything is read as Uzbek (English words respelled), as before."""
+        if lang == "auto" and self.english is not None:
+            return segments(text)
+        return [("en" if lang == "en" else "uz", s) for s in split_text(text)]
+
     def stream(self, text: str, cancel: threading.Event | None = None, seed: int = 0, priority: int = 1,
-               pacer: "Pacer | None" = None):
+               pacer: "Pacer | None" = None, lang: str = "uz", emotion: str | None = None,
+               intensity: float | None = None):
         """Yield {"type": "mark"}, {"type": "audio"} events for the whole text; stops quietly on cancel.
-        priority: 0 live conversation, 1 API request, 2 website demo, 3 background job (lower goes first)."""
-        sentences = split_text(text)
+        priority: 0 live conversation, 1 API request, 2 website demo, 3 background job (lower goes first).
+        lang: uz | en | auto; emotion: one of EMOTIONS; intensity 0..1 (see style())."""
+        sentences = self.plan(text, lang)
         pacer = pacer or Pacer()
-        for i, original in enumerate(sentences):
+        for i, (lg, original) in enumerate(sentences):
             if cancel is not None and cancel.is_set():
                 return
-            yield {"type": "mark", "text": original, "index": i}
-            pieces = split_sentences(normalize(original), max_chars=200)
+            st = self.style(lg, emotion, intensity)
+            yield {"type": "mark", "text": original, "index": i, "lang": lg, "emotion": st.emotion}
+            pieces = split_sentences(normalize_en(original) if lg == "en" else normalize(original), max_chars=200)
             for k, spoken in enumerate(pieces):
-                for pcm in self.sentence(spoken, seed + i * 7 + k, cancel, priority, pacer):
+                for pcm in self.sentence(spoken, seed + i * 7 + k, cancel, priority, pacer, style=st):
                     yield {"type": "audio", "pcm": pcm}
                 if cancel is not None and cancel.is_set():
                     return
@@ -192,12 +338,12 @@ class Streamer:
                     yield {"type": "audio", "pcm": np.zeros(int(PAUSE * SR), np.float32)}
 
     def sentence(self, spoken: str, seed: int = 0, cancel: threading.Event | None = None, priority: int = 1,
-                 pacer: "Pacer | None" = None, whole: bool = False):
+                 pacer: "Pacer | None" = None, whole: bool = False, style: Style | None = None):
         """One normalised sentence -> float32 audio chunks. Waits for a free slot; lower priority numbers first,
         so a live conversation never waits behind more than one sentence of a background job."""
         slot = self.slots.acquire(priority)
         try:
-            yield from self._sentence(spoken, seed, cancel, slot, pacer or Pacer(), whole)
+            yield from self._sentence(spoken, seed, cancel, slot, pacer or Pacer(), whole, style)
         finally:
             self.slots.release(slot)
 
@@ -208,22 +354,21 @@ class Streamer:
         return timer.wrap(fn)(*a, **kw)
 
     @torch.inference_mode()
-    def _sentence(self, spoken: str, seed: int, cancel, slot=None, pacer: "Pacer | None" = None, whole: bool = False):
+    def _sentence(self, spoken: str, seed: int, cancel, slot=None, pacer: "Pacer | None" = None, whole: bool = False,
+                  style: Style | None = None):
         """whole=True: one vocoder call for the finished sentence (no seams) for /v1/tts and jobs, where nobody is
         listening yet. Live sessions use chunks."""
         from chatterbox.tts import punc_norm
 
-        eng, p = self.engine, self.params
+        st = style or self.style()
+        t3 = st.t3
         rng = torch.Generator(device=self.device).manual_seed(seed)  # per stream: parallel streams do not mix
-        text = for_model(spoken)
-        cond = eng.conds.t3
-        if p["exaggeration"] != float(cond.emotion_adv.view(-1)[0]):
-            from chatterbox.models.t3.modules.cond_enc import T3Cond
-            eng.conds.t3 = cond = T3Cond(speaker_emb=cond.speaker_emb, cond_prompt_speech_tokens=cond.cond_prompt_speech_tokens,
-                                         emotion_adv=p["exaggeration"] * torch.ones(1, 1, 1)).to(device=self.device, dtype=self.dtype)
-        tokens = eng.tokenizer.text_to_tokens(punc_norm(f"{self.prefix.text} {text}")).to(self.device)
+        text = for_model(spoken) if st.lang == "uz" else spoken   # English mode: no Uzbek respelling
+        cond = st.cond
+        joined = f"{st.prefix.text} {text}" if st.prefix is not None else text
+        tokens = st.tokenizer.text_to_tokens(punc_norm(joined)).to(self.device)
         tokens = torch.cat([tokens, tokens], dim=0)  # CFG pair
-        tokens = F.pad(F.pad(tokens, (1, 0), value=eng.t3.hp.start_text_token), (0, 1), value=eng.t3.hp.stop_text_token)
+        tokens = F.pad(F.pad(tokens, (1, 0), value=t3.hp.start_text_token), (0, 1), value=t3.hp.stop_text_token)
         letters = sum(ch.isalpha() for ch in text)
         max_new = min(1000, 80 + 5 * letters)
         if slot is not None:  # the static KV cache must hold prompt + speech
@@ -236,7 +381,7 @@ class Streamer:
         state = {"done": 0, "cache": None, "first": True}
         buf: list[int] = []
         emitted = 0  # tokens already turned into audio
-        gen = self._tokens(cond, tokens, max_new, slot, rng)
+        gen = self._tokens(st, cond, tokens, max_new, slot.pick(st.graph) if slot is not None else None, rng)
 
         def vocode(final: bool):
             t = time.perf_counter()
@@ -278,13 +423,13 @@ class Streamer:
             if pcm.size:
                 yield pcm
 
-    def _tokens(self, cond, text_tokens: torch.Tensor, max_new: int, dec=None, rng=None):
+    def _tokens(self, st: Style, cond, text_tokens: torch.Tensor, max_new: int, dec=None, rng=None):
         """uz_tts._continue_tokens as a generator: yields each new speech token id as soon as it is sampled.
         With a GraphDecoder (engine/fastt3.py) every step is one CUDA-graph replay instead of transformers."""
         from transformers.generation.logits_process import MinPLogitsWarper, RepetitionPenaltyLogitsProcessor
         from chatterbox.models.t3.inference.t3_hf_backend import T3HuggingfaceBackend
 
-        t3, p = self.engine.t3, self.params
+        t3, p = st.t3, st.params
         cfg_weight, temperature = p["cfg_weight"], p["temperature"]
         with torch.inference_mode():
             initial = t3.hp.start_speech_token * torch.ones_like(text_tokens[:, :1])
@@ -294,11 +439,12 @@ class Streamer:
                                          speech_head=t3.speech_head, alignment_stream_analyzer=None)
             dev = embeds.device
             bos = torch.tensor([[t3.hp.start_speech_token]], dtype=torch.long, device=dev)
-            prefix = self.prefix.tokens
-            n_pre = prefix.numel()
-            head = torch.cat([t3.speech_emb(bos) + t3.speech_pos_emb.get_fixed_embedding(0),
-                              t3.speech_emb(prefix.view(1, -1)) +
-                              t3.speech_pos_emb.get_fixed_embedding(torch.arange(1, n_pre + 1, device=dev))], dim=1)
+            prefix = st.prefix.tokens if st.prefix is not None else None
+            n_pre = 0 if prefix is None else prefix.numel()
+            head = t3.speech_emb(bos) + t3.speech_pos_emb.get_fixed_embedding(0)
+            if n_pre:
+                head = torch.cat([head, t3.speech_emb(prefix.view(1, -1)) +
+                                  t3.speech_pos_emb.get_fixed_embedding(torch.arange(1, n_pre + 1, device=dev))], dim=1)
             full = torch.cat([embeds, torch.cat([head, head])], dim=1)
             past = None
             if dec is not None:

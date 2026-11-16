@@ -30,6 +30,13 @@ An Uzbek text-to-speech and voice lab, like ElevenLabs but built for Uzbek. The 
 | `clients/tilsim-stream.js` | Browser client: WebSocket → AudioWorklet, gap-free playback, instant cancel (for IELTS Buddy). |
 | `tools/bench_stream.py`, `tools/sweep_stream.py`, `tools/render_stream.py` | Latency benchmark (time to first audio, RTF, VRAM, parallel streams); setting sweeps; test-set renders for CER/UTMOS. |
 | `tests/test_stream_api.py` | Streaming tests with a fake voice: protocol, cancel, tokens, limits, chunked HTTP, slot priority. |
+| `uznorm/en_normalize.py`, `uznorm/lang.py` | English mode text (American numbers) and per-sentence language detection for `lang=auto`. |
+| `tools/en_lab.py`, `tools/emo_lab.py`, `tools/emo_pick.py` | English-mode and emotion experiments: many takes, then the shortlist for the blind judge. |
+| `tools/runq.ps1` | Runs heavy jobs one after another at BelowNormal priority (`out/runq.log`). |
+| `tools/remote_zip.py` | Fetches single files from a huge remote zip by HTTP Range (KazEmoTTS: 54 MB out of 10.5 GB). |
+| `docs/IELTS_BUDDY.md` | How the IELTS Buddy examiner turns on clean English (`lang: "auto"`). |
+| `data/voices/english/` | English mode: the US-speaker prompt and embedding (CMU ARCTIC `bdl`, licence kept). |
+| `data/eval/test_en.tsv`, `emo_seed.tsv`, `emo_neutral.tsv` | English test set (40), emotion seed texts (80), and plain texts for the blind emotion test. |
 
 ## Website (Tilsim)
 
@@ -64,6 +71,8 @@ The text box in the hero sends text to `engine/serve.py`. The same server runs i
   - It scales to zero 90 s after the last request. The first request after that wakes it: about 30–60 s.
   - It runs on the Starter plan's $30/month credit, at about $0.75 per busy hour (T4 + 2 CPU + 8 GB).
   - Site demos are capped at 25 a day for all visitors together (`TILSIM_DEMO_DAILY_MAX`).
+  - English mode (`lang: "en" | "auto"`, docs/API.md section 10) is on in the cloud (`TILSIM_EN=1` at deploy) and off on the
+    laptop: a second T3 does not fit next to the first in 4 GB. Test copies deploy as `TILSIM_APP=tilsim-dev` (own URL).
   - It runs two engines (`TILSIM_ENGINE=both`): `/v1/tts` and jobs use the original fp32 whole-sentence path, and live
     `/v1/stream` uses the fast streaming engine. The laptop runs only the fast one (`stream`), since 4 GB holds one.
   - Set a Workspace budget in the Modal dashboard as the hard stop.

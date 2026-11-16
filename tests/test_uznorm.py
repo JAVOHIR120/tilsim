@@ -3,7 +3,8 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from uznorm import (cardinal, check, cyr_to_lat, decimal, fraction, new_to_old, normalize,  # noqa: E402
                     normalize_apostrophes, old_to_new, ordinal, roman_to_int, split_sentences, with_suffix)
@@ -191,6 +192,67 @@ class EnglishRespellTest(unittest.TestCase):
 
     def test_unknown_english_word_by_rules(self):
         self.assertEqual(self.r("Please describe the weather station."), "Pliz diskrayb di veder steyshn.")
+
+
+class EnglishNormalizeTest(unittest.TestCase):
+    """English mode text (uznorm/en_normalize.py): American reading of numbers."""
+
+    def test_numbers(self):
+        from uznorm.en_normalize import normalize_en
+        cases = {
+            "The test starts at 9:30, so please arrive by 9 o'clock.":
+                "The test starts at nine thirty, so please arrive by nine o'clock.",
+            "It opened in 1998 and has 250,000 visitors.":
+                "It opened in nineteen ninety-eight and has two hundred fifty thousand visitors.",
+            "From 6.5 to 7.5 in 3 months.": "From six point five to seven point five in three months.",
+            "It costs $45, which is 20% less.": "It costs forty-five dollars, which is twenty percent less.",
+            "Born on the 13th of February, 2003.": "Born on the thirteenth of February, two thousand three.",
+            "Talk for 1-2 minutes at 10:05 am in 2026.": "Talk for one to two minutes at ten oh five a m in twenty twenty-six.",
+            "$4.50 and $1": "four dollars and fifty cents and one dollar",
+            "Dr. Lee & Mr. Khan": "Doctor Lee and Mister Khan",
+        }
+        for written, said in cases.items():
+            self.assertEqual(normalize_en(written), said)
+
+    def test_ordinals(self):
+        from uznorm.en_normalize import ordinal_en
+        self.assertEqual([ordinal_en(n) for n in (1, 2, 3, 5, 8, 9, 12, 20, 21, 100)],
+                         ["first", "second", "third", "fifth", "eighth", "ninth", "twelfth", "twentieth",
+                          "twenty-first", "one hundredth"])
+
+
+class LanguageTest(unittest.TestCase):
+    """uznorm/lang.py: which sentences are English, and where mixed text switches language."""
+
+    @staticmethod
+    def sentences(name):
+        import re
+        out = []
+        for ln in (ROOT / name).read_text(encoding="utf-8").splitlines():
+            if ln.strip() and not ln.startswith("#"):
+                out += [s for s in re.split(r"(?<=[.!?…])\s+", ln.split("\t")[-1]) if s]
+        return out
+
+    def test_test_sets(self):
+        from uznorm.lang import detect_lang
+        for name, want in [("data/eval/test_en.tsv", "en"), ("data/scripts/english_en.tsv", "en"),
+                           ("data/eval/test_all.tsv", "uz"), ("data/eval/test_loan.tsv", "uz"),
+                           ("data/eval/test_uz.tsv", "uz"), ("data/eval/judge20.tsv", "uz"),
+                           ("data/scripts/starter_uz.tsv", "uz"), ("data/scripts/emotions_uz.tsv", "uz")]:
+            wrong = [s for s in self.sentences(name) if detect_lang(s) != want]
+            self.assertEqual(wrong, [], name)
+
+    def test_segments(self):
+        from uznorm.lang import segments
+        self.assertEqual(segments("Endi Part 2 ga o'tamiz. Describe a place you like to visit."),
+                         [("uz", "Endi Part 2 ga o'tamiz."), ("en", "Describe a place you like to visit.")])
+        self.assertEqual(segments("Savol shunday: Do you work or are you a student?"),
+                         [("uz", "Savol shunday:"), ("en", "Do you work or are you a student?")])
+        # three English words or fewer stay inside the Uzbek sentence (respelled there)
+        self.assertEqual(segments("Keyingi mavzu: technology and education."),
+                         [("uz", "Keyingi mavzu: technology and education.")])
+        self.assertEqual(segments('Bu yerda "fluency" va "coherence" juda muhim.'),
+                         [("uz", 'Bu yerda "fluency" va "coherence" juda muhim.')])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 """A native-ear judge with a hard spending cap: gemini-3.8-flash rates each clip ALONE (no comparisons, no order bias).
 
     python tools/gemini_judge.py out/v2-calm/best out/bench-azure-sardor ... --ids t01,t02 --max-usd 0.40
+    python tools/gemini_judge.py out/en-lab/A --mode en          # American English accent, 1-10
+    python tools/gemini_judge.py out/emo/round1 --mode emotion   # blind emotion label from 8 choices
 
 - Uses GEMINI_API_KEY from E:/Ielts buddy/.env (never printed). That project is on a paid tier: every call costs money,
   so spend is computed from each response's own token counts (paid prices through 2026-12-31: input $0.75/M,
@@ -37,6 +39,29 @@ Judge only the audio, as if hearing it on the radio. Rate:
 - issues: concrete problems you hear (the word + what is wrong), empty if none.
 Answer JSON {{"native": n, "natural": n, "issues": [..]}}"""
 
+# English mode (2026-11-15): is the founder's voice speaking clean American English, or English with an accent?
+EAR_EN = """You are a strict American English pronunciation coach. Listen to this ONE audio clip of English speech.
+The intended text: «{say}»
+Judge only the audio. Rate:
+- native: 1-10, how convincingly it sounds like a native General American speaker (vowels, th, w/v, r, final consonants,
+  word stress, rhythm, intonation). 10 = indistinguishable from a native American; 5 = clearly foreign but understandable.
+- accent: the accent you hear, in a few words (e.g. "General American", "slight foreign", "strong Russian or Central Asian").
+- natural: 1-10, how human and natural it sounds (rhythm, pauses, intonation, not robotic, not exaggerated).
+- issues: concrete problems (the word + what is wrong), empty if none.
+Answer JSON {{"native": n, "natural": n, "accent": "...", "issues": [..]}}"""
+
+# Emotion mode (2026-11-15): blind forced choice. The clip's intended emotion is NOT given.
+EMOTIONS_EN = ["neutral", "warm", "cheerful", "excited", "calm", "serious", "sympathetic", "surprised"]
+EAR_EMO = """You are an expert in vocal emotion. Listen to this ONE audio clip of a man speaking Uzbek.
+Judge the emotion in the VOICE (tone, pitch, energy, tempo, voice quality), not the meaning of the words.
+- emotion: the ONE best label from this list: """ + ", ".join(EMOTIONS_EN) + """.
+- second: the next most likely label from the same list.
+- intensity: 1-5, how strongly that emotion is expressed (1 = barely, 3 = clear, 5 = very strong).
+- natural: 1-10, how human and natural it sounds (10 = a real person; low if robotic, sing-song or over-acted).
+- overacted: true if the emotion sounds exaggerated or theatrical, else false.
+Answer JSON {{"emotion": "...", "second": "...", "intensity": n, "natural": n, "overacted": true/false}}"""
+PROMPTS = {"uz": EAR, "en": EAR_EN, "emotion": EAR_EMO}
+
 
 def api_key() -> str:
     for line in ENV.read_text(encoding="utf-8").splitlines():
@@ -63,6 +88,8 @@ def call(key: str, parts: list) -> dict:
             if e.code in (400, 403, 404):
                 raise RuntimeError(f"HTTP {e.code}: {msg}")
             time.sleep(5 * (attempt + 1) ** 2)
+        except (TimeoutError, urllib.error.URLError, ConnectionError, OSError):   # a dropped network: try again
+            time.sleep(5 * (attempt + 1) ** 2)
     raise RuntimeError("no answer")
 
 
@@ -79,16 +106,21 @@ def main() -> None:
     ap.add_argument("--ids", default="", help="only these ids (comma list); default all")
     ap.add_argument("--max-usd", type=float, default=0.40)
     ap.add_argument("--seed", type=int, default=None, help="only takes with this seed (e.g. 0 = first take, no selection)")
+    ap.add_argument("--files", type=Path, default=None, help="only the takes named in this file (one file name per line)")
+    ap.add_argument("--mode", choices=sorted(PROMPTS), default="uz",
+                    help="uz: native Uzbek ear; en: American English accent; emotion: blind emotion label")
     args = ap.parse_args()
     key = api_key()
     ids = set(args.ids.split(",")) if args.ids else None
+    files = set(args.files.read_text(encoding="utf-8").split()) if args.files else None
     spend = ledger()
     jobs = []
     for folder in args.folders:
         rows = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))["lines"]
-        cache_path = folder / "gemini.json"
+        cache_path = folder / ("gemini.json" if args.mode == "uz" else f"gemini-{args.mode}.json")
         cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
         jobs += [(folder, cache_path, cache, r) for r in rows if (ids is None or r["id"] in ids) and r["file"] not in cache
+                 and (files is None or r["file"] in files)
                  and (args.seed is None or r.get("seed", 0) == args.seed)]
     # interleave folders so a stop at the cap still leaves every voice with some judged clips
     jobs.sort(key=lambda j: (j[3]["id"], str(j[0])))
@@ -100,7 +132,8 @@ def main() -> None:
             break
         audio = {"inlineData": {"mimeType": "audio/wav", "data": wav16(folder / r["file"])}}
         try:
-            resp = call(key, [audio, {"text": EAR.format(say=r.get("spoken") or r["text"])}])
+            prompt = PROMPTS[args.mode].format(say=r.get("spoken") or r["text"]) if args.mode != "emotion" else EAR_EMO
+            resp = call(key, [audio, {"text": prompt}])
         except RuntimeError as e:
             print("API error, stopping:", e, flush=True)
             break
@@ -116,7 +149,10 @@ def main() -> None:
             verdict = {"error": txt[:200]}
         cache[r["file"]] = {**verdict, "cost_usd": round(cost, 6)}
         cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"{folder.name:24} {r['file']:14} native {verdict.get('native')}  natural {verdict.get('natural')}  "
+        shown = (f"emotion {verdict.get('emotion')} / {verdict.get('second')}  intensity {verdict.get('intensity')}  "
+                 f"overacted {verdict.get('overacted')}" if args.mode == "emotion" else
+                 f"native {verdict.get('native')}  accent {verdict.get('accent', '-')}")
+        print(f"{folder.name:24} {r['file']:18} {shown}  natural {verdict.get('natural')}  "
               f"${cost:.4f}  total ${spend['usd']:.4f}  {verdict.get('issues', '')}", flush=True)
     print(f"done; total spent ${spend['usd']:.4f} in {spend['calls']} calls", flush=True)
 

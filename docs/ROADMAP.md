@@ -213,6 +213,132 @@ The owner's verdict outranks the judge, so treat the judge as a tool for compari
   - a workspace budget, set by the owner in the dashboard.
 - The laptop stays the free first choice whenever it runs `start-tilsim.bat`.
 
+### English mode and emotions (2026-11-15)
+
+The founder asked for clean (not Uzbek-accented) English in his voice, and 8 emotions with a strength.
+He chose American English, all 8 emotions, for every use (lessons, ads, bots, audiobooks).
+He could not record emotion or English clips, so both are built from what the model can already do and are proven by measurement.
+
+**Uzbek stays exactly as it was.** The old engine (git HEAD) and the new one were run on the same 3 texts and seeds:
+- the speech tokens were identical (424 whole-sentence + 372 streamed);
+- the whole-sentence audio was bit-identical (max difference 0.0).
+
+So every Uzbek number measured before still holds for requests without the new fields.
+
+**Laptop note:** the classic fp32 engine no longer fits next to the desktop apps on the 4 GB card: 3.84 GB used, spilling into
+shared memory, 8–14 s of compute per second of speech. All lab runs therefore use half precision (bf16), the same as the
+streaming engine.
+
+**English mode, rounds 1–4** (`data/eval/test_en.tsv`, 40 sentences, seed 0, `tools/en_lab.py`):
+- **Measured with:**
+  - CER: English Whisper (`openai/whisper-large-v3-turbo`, MIT);
+  - similarity: against `heldout.wav`;
+  - accent: blind `gemini_judge --mode en` on 10 sentences per variant, 1–10 «native General American».
+- **What the variants change:**
+  - B0 is today's path: the Uzbek LoRA and the respelling.
+  - Every E variant uses the stock Chatterbox English T3 (no LoRA, its own 704-token tokenizer, `uznorm.en_normalize`), with the S3Gen timbre from `ref.wav`.
+
+| Variant | CER | UTMOS | Similarity | Native | Accent the judge named |
+|---|---|---|---|---|---|
+| B0 today | 9.19% | 3.75 | 0.898 | 2.9 | Central Asian, Russian |
+| E1 stock English T3 | 1.03% | 4.16 | 0.890 | 4.9 | mostly South Asian |
+| E2 + LoRA'd speaker projection | 0.66% | 4.11 | 0.891 | – | – |
+| E3 + calm settings | 0.69% | 4.20 | 0.891 | – | – |
+| E4 T3 prompt from an English clip | 0.73% | 4.22 | 0.894 | 4.2 | South Asian |
+| E6 T3 prompt from the built-in voice | 0.81% | 4.23 | 0.895 | 5.2 | South Asian |
+| **E7 + speaker embedding from the built-in voice** | 0.85% | 4.24 | **0.824** | **7.6** | **General American** (3× 10/10) |
+| E8 prompt from the 4 takes judged most native | 0.77% | 4.15 | 0.893 | 4.8 | South Asian |
+| E9 E8 + those takes as the reference | 0.94% | 4.10 | 0.875 | 4.3 | South Asian |
+| E11 speaker embedding 30% towards the built-in voice | 0.73% | 4.25 | 0.881 | 6.0 | mixed |
+| E10 50% | 0.77% | 4.24 | 0.855 | 7.4 | mostly American |
+| E12 70% | 1.12% | 4.24 | 0.830 | 6.6 | mixed |
+
+- **The founder heard an Indian accent in E1. The judge agreed.**
+- **What causes the accent:**
+  - It is mostly T3's speaker embedding (the VoiceEncoder vector of `ref.wav`): the model gives the accent that goes with that voice.
+  - The speech prompt alone (E4, E6, E8) hardly matters.
+- **Why similarity falls:** the built-in voice is lower (E7 takes: 131 Hz median, the founder: 146–151 Hz), so the embedding also moves the pitch.
+- **Where it stands:** no mix meets both gates yet (native ≥ 8 and similarity ≥ 0.88).
+- **Round 5 (2026-11-16):** the founder said yes to a native US male voice. CMU ARCTIC `bdl` was used (20 clips, 2 MB, «free for use for any purpose (commercial or otherwise)», copyright notice kept in `data/voices/english/CMU_ARCTIC_COPYING.txt`).
+  - Its pitch is 127 Hz (the founder's is 146 Hz). Its embedding is closer to the founder's than the built-in voice's: cosine 0.68 against 0.56.
+
+| Variant (T3 prompt + speaker embedding from bdl) | CER | UTMOS | Similarity | Native | ≥ 8 |
+|---|---|---|---|---|---|
+| **E13 bdl, full** | 0.82% | 4.24 | 0.840 | **8.3** | 9/10 (6 «General American») |
+| E15 bdl 70% | 0.68% | 4.34 | 0.858 | 7.0 | 7/10 |
+| E14 bdl 50% | 0.63% | 4.22 | 0.880 | 5.4 | 4/10 |
+
+- **Decision (the founder, by ear, 2026-11-16): E13.** It is the first variant to pass the accent gate. It misses the similarity gate (0.84 < 0.88), and the founder accepted that.
+  It ships as `profile["english"]`: `bdl_prompt.wav`, `bdl_ve.npy`, `spk_mix` 1.0, stock params (exaggeration 0.5, cfg 0.5, temperature 0.8, repetition penalty 1.2).
+- **Laptop:** `tools/en_lab.py --t3-prompt none` (E5) crashed: T3Cond.to() cannot cast a missing prompt. That path is not used.
+
+**Emotions, round A** (`data/eval/emo_seed.tsv`, text that fits the mood, per-mood settings grid, 2 seeds, 400 takes, `tools/emo_lab.py`):
+- **Filter, then shortlist:**
+  - clean takes: CER ≤ 2%, similarity ≥ 0.86, UTMOS ≥ 3.3;
+  - then by acoustic direction (`tools/emo_pick.py`: pitch level, range, rate, loudness against the neutral takes);
+  - 12 per mood went to the blind judge (`--mode emotion`, 8 choices, the intended mood not given).
+- **First-label hits:** neutral 10/10, calm 12/12, surprised 11/12, serious 10/12, sympathetic 6/12, warm 6/12, excited 4/12 (6 heard as neutral), cheerful 2/12 (7 heard as excited).
+- **No take was called over-acted.** Natural scores were 7–8.
+- **Settings the judge liked:** warm exaggeration 0.55; serious 0.35; calm and sympathetic 0.25 with cfg 0.3; surprised 0.85; excited 1.1; cheerful 0.6.
+- **Bank v1:** the best judged take per mood became its prefix clip (lab files: `out/emo/bank_v1/*.wav`, profile `out/emo/ovozim_emo1.json`; not shipped).
+  The judge's best setting is the intensity 0.6 point; intensity 1 goes further in the same direction.
+
+**Emotions, rounds B and C:** the same plain sentence in every mood, so the mood can only come from the voice.
+- B1 (bank v1, 0.6): 4/32 first-label hits, only neutral right. B2 (+ the clip as voice prompt): 0/23. Both were judged only in part, because the network dropped.
+- C1 (bank at 1.0): 0/35. C2 (extreme settings, e.g. exaggeration 1.6): 3/35.
+- Quality falls fast: UTMOS down to 2.9, CER 3–5%.
+- The voice does move. C2 «excited» went from 150 to 199 Hz and got louder, «sympathetic» got lower and slower.
+- **The founder's ear agreed with the judge: «deyarli bir xil»** (almost the same).
+- **The judge is not a valid voice-only emotion meter.** Real acted Kazakh emotional speech (KazEmoTTS, male) read on neutral news text was labelled «neutral/calm» 29 times out of 30.
+  The judge reads emotion from the words, so from round K on the founder's ear decides.
+
+**Emotions, round K (2026-11-16):** emotional speech from the internet, as the founder asked, under a commercial licence.
+- Source: KazEmoTTS (ISSAI, CC BY 4.0). It is Kazakh, the closest open emotional corpus to Uzbek prosody: 2 male narrators, 6 moods.
+- Only 144 clips were fetched, 54 MB, out of the 10.5 GB zip, by HTTP Range reads (`tools/remote_zip.py`).
+- Attribution text required in the product: «Our product uses KazEmoTTS: Kazakh language Emotional Text-to-Speech, which is available under a Creative Commons Attribution 4.0 International License».
+- Mood mapping: happy → cheerful, warm and excited; surprise → surprised; sad → sympathetic and calm; angry → serious.
+  The clips (`models/kazemotts/prompts/`, not in git) were used as T3's voice prompt (K1) or as the prefix with a transliterated transcript (K2).
+  The founder's speaker embedding and timbre stay.
+
+- **Round K results** (5 plain sentences):
+
+| | Voice change against neutral (147 Hz) | Quality |
+|---|---|---|
+| K1: Kazakh clip as the voice prompt | small; only excited (179 Hz, louder) and surprised (166 Hz) | CER 0.4–4.2%, UTMOS 3.21–3.72 |
+| K2: Kazakh clip as the prefix | larger (excited 195 Hz; cheerful very fast) | CER up to 9%, UTMOS down to 2.75: the Kazakh text leaks into pronunciation |
+
+- **What it shows:** with this model, a mood prompt moves the voice only a little, even when the prompt is real acted emotion.
+  Audible, controllable emotion needs training (an emotion adapter on labelled emotional speech), not prompting.
+- **Decision (the founder, 2026-11-16):**
+  - Ship English now.
+  - Keep the emotion field but refuse anything except «neytral» (`400 emotion_unavailable`) until a bank exists: the API is ready, the voice is not.
+  - Run emotion training as its own project.
+    Data: openly licensed emotional speech (KazEmoTTS, CC BY 4.0; CC BY Uzbek audiobooks and audio stories found on YouTube with the Creative Commons filter: Sokinlik Istab, REGISTON TV, BBC News O‘zbek).
+    Channels that look like re-uploads are left out, because their CC mark may not be valid.
+
+**English mode on the cloud T4** (dev run, `TILSIM_EN=1`, 2026-11-16):
+- **Speed:** Uzbek short and medium 0.56 s to first audio, RTF 0.64 / 0.51; before English was loaded: 0.53 s, 0.60 / 0.49.
+- **English and mixed text:** English 0.55 s, RTF 0.54–0.56. Mixed uz → en with `lang=auto`: 0.56 s, RTF 0.51, so switching adds nothing measurable.
+- **VRAM:** 4.36 GB.
+- **Laptop:** the second T3 overfills the 4 GB card (4.02 GB reserved) and makes even Uzbek 5–6× slower.
+  English mode is therefore opt-in (`TILSIM_EN=1`): off on the laptop, on in the cloud.
+- **Cost:** the two cloud benchmark runs, including one that failed on the missing English tokenizer, about $0.10.
+
+**Shipped to the cloud (2026-11-16):**
+- **Rollout:** `TILSIM_EN=1`, a dev copy tested first (`TILSIM_APP=tilsim-dev`, then stopped), then prod.
+- **Live check from Uzbekistan:**
+  - the old client (no new fields): first audio 1.02 s, cancel 0.28 s;
+  - `lang=auto`: 0.81 s; `lang=en`: 0.80 s;
+  - emotion: refused with `emotion_unavailable`, as intended.
+- **Bug found and fixed on the way:** every turn's usage write (a ~2 s volume commit) ran on the speaking thread, so a turn sent right after «end» started ~2 s late.
+  - Before the fix, later turns took 2.9–4.1 s to first audio; after it, 0.79–0.84 s.
+  - Billing now runs in the background, with a test that a slow write never delays the next turn.
+- **Modal cost of all cloud tests:** about $0.25 of the monthly credit.
+
+**Gemini spend for this work:** $0.185 of the $0.75 the founder allowed (ledger $0.1526 → $0.3372, 379 calls).
+
+<!-- EN-EMO -->
+
 ## 6. Selling it: what changes
 
 - **Licences:** only the MIT/Apache rows in section 2. Credit CC-BY data (USC) on a "Credits" page. Keep a `LICENSES.md` listing every model and dataset in the product.

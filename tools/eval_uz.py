@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 from uznorm import normalize  # noqa: E402
 
 ASR_DIR = ROOT / "models" / "asr-kotib-whisper-medium-uz"
+ASR_DIR_EN = ROOT / "models" / "asr-whisper-large-v3-turbo"   # openai/whisper-large-v3-turbo, MIT (English mode)
 MOS_DIR = ROOT / "models" / "speechmos"
 VE_PATH = Path("E:/tools/voiceclone/ckpt/ve.safetensors")
 DEFAULT_REF = Path("E:/tools/voiceclone/work/ref.wav")
@@ -106,25 +107,59 @@ def compare(ref_text: str, hyp_text: str) -> dict:
     }
 
 
+_SPELLING: dict | None = None
+
+
+def canon_en(text: str) -> str:
+    """English text -> spoken words, lowercase, American spelling, letters/apostrophes/spaces only.
+    Digits Whisper writes ("9:30", "$45", "2003") become the same words the voice was given (uznorm.en_normalize)."""
+    global _SPELLING
+    from uznorm.en_normalize import normalize_en
+    if _SPELLING is None:
+        path = ASR_DIR_EN / "normalizer.json"   # Whisper's British -> American spelling map
+        _SPELLING = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    t = normalize_en(text).lower().replace("’", "'")
+    t = re.sub(r"[-–—/]", " ", t)
+    t = re.sub(r"[^a-z' ]+", " ", t)
+    t = re.sub(r"(?<![a-z])'|'(?![a-z])", " ", t)
+    return " ".join(_SPELLING.get(w, w) for w in t.split())
+
+
+def compare_en(ref_text: str, hyp_text: str) -> dict:
+    ref, hyp = canon_en(ref_text), canon_en(hyp_text)
+    word_pairs = align(ref.split(), hyp.split())
+    lead_junk = 0
+    for r, h in word_pairs:
+        if r is not None:
+            break
+        lead_junk += 1
+    first_ok = next(((r == h) for r, h in word_pairs if r is not None), False)
+    return {"lead_junk": lead_junk, "first_word_ok": first_ok, "ref": ref, "hyp": hyp,
+            "cer": round(errors(align(list(ref), list(hyp))) / max(len(ref), 1), 4),
+            "wer": round(errors(word_pairs) / max(len(ref.split()), 1), 4),
+            "wrong_words": [f"{r or '∅'}→{h or '∅'}" for r, h in word_pairs if r != h]}
+
+
 # ---------------------------------------------------------------- stages
 
-def run_asr(paths: list[Path], batch: int = 1) -> list[str]:
+def run_asr(paths: list[Path], batch: int = 1, lang: str = "uz") -> list[str]:
     # batch 1 on purpose: Whisper keeps a cross-attention cache per beam for the full 30 s window
     # (24 layers x 1500 frames). 6 files x 5 beams needed ~4.4 GB and spilled out of the 4 GB card (10 s per file).
     from transformers import WhisperForConditionalGeneration, WhisperProcessor
 
-    proc = WhisperProcessor.from_pretrained(ASR_DIR)
+    asr_dir = ASR_DIR_EN if lang == "en" else ASR_DIR
+    proc = WhisperProcessor.from_pretrained(asr_dir)
     try:
-        model = WhisperForConditionalGeneration.from_pretrained(ASR_DIR, dtype=torch.float16, device_map="cuda")
+        model = WhisperForConditionalGeneration.from_pretrained(asr_dir, dtype=torch.float16, device_map="cuda")
     except Exception:  # older/newer transformers or no accelerate: load then move
-        model = WhisperForConditionalGeneration.from_pretrained(ASR_DIR, dtype=torch.float16).to("cuda")
+        model = WhisperForConditionalGeneration.from_pretrained(asr_dir, dtype=torch.float16).to("cuda")
     model.eval()
     out = []
     for i in range(0, len(paths), batch):
         audio = [librosa.load(p, sr=16000)[0] for p in paths[i:i + batch]]
         feats = proc(audio, sampling_rate=16000, return_tensors="pt").input_features.to("cuda", torch.float16)
         with torch.inference_mode():
-            ids = model.generate(feats, language="uz", task="transcribe", num_beams=5, max_new_tokens=200)
+            ids = model.generate(feats, language=lang, task="transcribe", num_beams=5, max_new_tokens=200)
         out += [t.strip() for t in proc.batch_decode(ids, skip_special_tokens=True)]
         if (i // batch) % 12 == 0 or i + batch >= len(paths):
             vram = torch.cuda.max_memory_allocated() / 2**30
@@ -203,7 +238,8 @@ def run_prosody(rows: list[dict], paths: list[Path]) -> None:
     real = json.loads(PROFILE.read_text(encoding="utf-8"))
     for r, p in zip(rows, paths):
         f = features(p, r.get("spoken") or r.get("text"))
-        r.update({"pitch_st": f["pitch_st"], "rate": f.get("rate"), "prosody_penalty": penalty(f, real)})
+        r.update({"pitch_st": f["pitch_st"], "rate": f.get("rate"), "prosody_penalty": penalty(f, real),
+                  "pitch_hz": f.get("pitch_median_hz"), "pitch_range_st": f.get("pitch_range_st"), "loud_db": f.get("loud_db")})
         style = "flat" if f["pitch_st"] < real["pitch_st"] * 0.75 else "wild" if f["pitch_st"] > real["pitch_st"] * 1.35 else "ok"
         r["prosody"] = style
 
@@ -247,6 +283,8 @@ def main() -> None:
     ap.add_argument("--no-sim", action="store_true")
     ap.add_argument("--no-prosody", action="store_true")
     ap.add_argument("--only-prosody", action="store_true", help="add prosody to an existing eval.json, run nothing else")
+    ap.add_argument("--lang", choices=["uz", "en"], default="uz", help="en: English Whisper and English text rules "
+                    "(no Uzbek letter stats, no Uzbek prosody profile)")
     args = ap.parse_args()
 
     manifest = json.loads((args.out / "manifest.json").read_text(encoding="utf-8"))
@@ -257,9 +295,9 @@ def main() -> None:
     paths = [args.out / r["file"] for r in rows]
     if not args.no_asr:
         print("ASR …", flush=True)
-        for r, hyp in zip(rows, run_asr(paths)):
+        for r, hyp in zip(rows, run_asr(paths, lang=args.lang)):
             r["asr"] = hyp
-            r.update(compare(r["text"], hyp))
+            r.update(compare_en(r["text"], hyp) if args.lang == "en" else compare(r["text"], hyp))
     if not args.no_mos:
         print("UTMOS …", flush=True)
         for r, s in zip(rows, run_mos(paths)):
@@ -268,7 +306,7 @@ def main() -> None:
         print("similarity …", flush=True)
         for r, s in zip(rows, run_similarity(paths, args.ref)):
             r["similarity"] = s
-    if not args.no_prosody:
+    if not args.no_prosody and args.lang == "uz":   # the speaker profile is Uzbek speech
         print("prosody …", flush=True)
         run_prosody(rows, paths)
     summary = summarize(rows)

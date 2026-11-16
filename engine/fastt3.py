@@ -29,7 +29,10 @@ def _cache_kv(past, i: int):
 
 
 class GraphDecoder:
-    def __init__(self, t3, max_len: int = 1400, batch: int = 2):
+    def __init__(self, t3, max_len: int = 1400, batch: int = 2, share: "GraphDecoder | None" = None):
+        """share: another GraphDecoder whose static buffers (KV cache, input, position) this one reuses. Used for a
+        second set of weights (English mode: the stock T3 without the Uzbek LoRA). The two never run at the same
+        time (one sentence at a time per slot), so one KV cache serves both and switching costs nothing."""
         self.t3 = t3
         self.llama = llama = t3.tfmr
         cfg = llama.config
@@ -39,19 +42,36 @@ class GraphDecoder:
         self.H, self.KV = cfg.num_attention_heads, cfg.num_key_value_heads
         self.Dh = getattr(cfg, "head_dim", None) or cfg.hidden_size // cfg.num_attention_heads
         hidden = cfg.hidden_size
-        shape = (batch, self.KV, max_len, self.Dh)
-        self.k = [torch.zeros(shape, dtype=self.dtype, device=self.device) for _ in llama.layers]
-        self.v = [torch.zeros(shape, dtype=self.dtype, device=self.device) for _ in llama.layers]
-        with torch.inference_mode():
-            pos_ids = torch.arange(max_len, device=self.device)[None]
-            cos, sin = llama.rotary_emb(torch.zeros(1, 1, hidden, dtype=self.dtype, device=self.device), pos_ids)
-        self.cos, self.sin = cos[0].to(self.dtype), sin[0].to(self.dtype)
-        self.arange = torch.arange(max_len, device=self.device)
-        self.x_in = torch.zeros(batch, 1, hidden, dtype=self.dtype, device=self.device)
-        self.pos = torch.zeros(1, dtype=torch.long, device=self.device)
+        self.twins: dict[str, GraphDecoder] = {}
+        if share is not None:
+            if (share.B, share.max_len, share.dtype, share.H, share.Dh) != (batch, max_len, self.dtype, self.H, self.Dh):
+                raise ValueError("shared GraphDecoder has a different shape or dtype")
+            self.k, self.v, self.cos, self.sin = share.k, share.v, share.cos, share.sin
+            self.arange, self.x_in, self.pos = share.arange, share.x_in, share.pos
+        else:
+            shape = (batch, self.KV, max_len, self.Dh)
+            self.k = [torch.zeros(shape, dtype=self.dtype, device=self.device) for _ in llama.layers]
+            self.v = [torch.zeros(shape, dtype=self.dtype, device=self.device) for _ in llama.layers]
+            with torch.inference_mode():
+                pos_ids = torch.arange(max_len, device=self.device)[None]
+                cos, sin = llama.rotary_emb(torch.zeros(1, 1, hidden, dtype=self.dtype, device=self.device), pos_ids)
+            self.cos, self.sin = cos[0].to(self.dtype), sin[0].to(self.dtype)
+            self.arange = torch.arange(max_len, device=self.device)
+            self.x_in = torch.zeros(batch, 1, hidden, dtype=self.dtype, device=self.device)
+            self.pos = torch.zeros(1, dtype=torch.long, device=self.device)
         self.logits = None
         self.graph = None
         self.n = 0  # next position to write
+
+    def twin(self, name: str, t3) -> "GraphDecoder":
+        """A decoder for other weights (same shapes) on this decoder's buffers; captured, and kept in self.twins."""
+        d = GraphDecoder(t3, max_len=self.max_len, batch=self.B, share=self)
+        d.capture()
+        self.twins[name] = d
+        return d
+
+    def pick(self, name: str | None) -> "GraphDecoder":
+        return self.twins[name] if name and name in self.twins else self
 
     # ------------------------------------------------------------ the static step
     def _step(self) -> None:

@@ -31,25 +31,44 @@ SR = 24000
 
 
 class FakeStreamer:
-    """Speaks every sentence as `chunks` pieces of 0.1 s tone, `delay` seconds apart (like a GPU making them)."""
+    """Speaks every sentence as `chunks` pieces of 0.1 s tone, `delay` seconds apart (like a GPU making them).
+    Languages and emotions are only recorded (self.styles), the way engine/stream.Streamer.style() would pick them."""
     sr, streams = SR, 1
+    EMOTIONS = ("neytral", "iliq", "quvnoq", "hayajonli", "xotirjam", "jiddiy", "hamdard", "hayron")
 
     def __init__(self, chunks=3, delay=0.01):
         self.chunks, self.delay = chunks, delay
         self.calls = []
+        self.styles = []          # (sentence, lang, emotion, intensity) per sentence spoken
+        self.english = object()   # English mode "loaded"; a test sets None to switch it off
+        self.bank = {"iliq": {}}    # an emotion bank exists; a test empties it to switch emotions off
 
-    def stream(self, text, cancel=None, seed=0, priority=1, **kw):
+    def plan(self, text, lang="uz"):
         from uznorm import split_sentences
-        sents = split_sentences(text.strip(), max_chars=10_000)
-        for i, sent in enumerate(sents):
+        from uznorm.lang import segments
+        if lang == "auto" and self.english is not None:
+            return segments(text)
+        return [("en" if lang == "en" else "uz", s) for s in split_sentences(text.strip(), max_chars=10_000)]
+
+    def style(self, lang="uz", emotion=None, intensity=None):
+        emotion = emotion or "neytral"
+        assert lang in ("uz", "en") and emotion in self.EMOTIONS
+        return {"lang": lang, "emotion": emotion, "intensity": intensity}
+
+    def stream(self, text, cancel=None, seed=0, priority=1, lang="uz", emotion=None, intensity=None, **kw):
+        sents = self.plan(text, lang)
+        for i, (lg, sent) in enumerate(sents):
+            st = self.style(lg, emotion, intensity)
             self.calls.append((sent, priority))
-            yield {"type": "mark", "text": sent, "index": i}
-            for _ in self.sentence(sent, seed, cancel, priority):
+            yield {"type": "mark", "text": sent, "index": i, "lang": lg, "emotion": st["emotion"]}
+            for _ in self.sentence(sent, seed, cancel, priority, style=st):
                 yield {"type": "audio", "pcm": _}
             if i < len(sents) - 1:  # the real Streamer pauses 0.25 s between sentences
                 yield {"type": "audio", "pcm": np.zeros(int(0.25 * SR), np.float32)}
 
-    def sentence(self, spoken, seed=0, cancel=None, priority=1, pacer=None, whole=False):
+    def sentence(self, spoken, seed=0, cancel=None, priority=1, pacer=None, whole=False, style=None):
+        st = style or self.style()
+        self.styles.append((spoken, st["lang"], st["emotion"], st["intensity"]))
         for _ in range(self.chunks):
             if cancel is not None and cancel.is_set():
                 return
@@ -110,6 +129,25 @@ class LiveSessionTest(unittest.TestCase):
         t0 = time.time()
         while sum(e["type"] == "end" for e in events) < n and time.time() - t0 < timeout:
             time.sleep(0.01)
+
+    def test_slow_billing_does_not_delay_the_next_turn(self):
+        """On the cloud a usage write takes ~2 s (volume commit); the next turn must not wait for it."""
+        events, audio, usage = [], [], []
+
+        def slow_usage(c, sec):
+            time.sleep(1.0)
+            usage.append((c, sec))
+        s = live.LiveSession(FakeStreamer(chunks=2), events.append, audio.append, on_usage=slow_usage)
+        s.feed("Birinchi navbat.", flush=True)
+        self.wait_end(events)
+        t0 = time.time()
+        s.feed("Ikkinchi navbat.", flush=True)
+        while sum(e["type"] == "start" for e in events) < 2 and time.time() - t0 < 3:
+            time.sleep(0.005)
+        self.assertLess(time.time() - t0, 0.5)
+        self.wait_end(events, 2)
+        s.close()
+        self.assertEqual([u[0] for u in usage], [len("Birinchi navbat."), len("Ikkinchi navbat.")])
 
     def test_turn_events_and_usage(self):
         s, events, audio, usage = self.make()
@@ -360,6 +398,10 @@ class StreamServerTest(unittest.TestCase):
 
     def test_sessions_are_capped(self):
         svc = self.handler.service
+        for _ in range(300):   # sessions of earlier tests close on the server a moment after the client hangs up
+            if svc.sessions <= 0:
+                break
+            time.sleep(0.01)
         svc.sessions = serve.MAX_SESSIONS_PER_STREAM * svc.streamer.streams
         try:
             c = WSClient(self.port, "/v1/stream", {"X-API-Key": self.key})
@@ -374,6 +416,123 @@ class StreamServerTest(unittest.TestCase):
         status, h, _ = self.post("/v1/tts", {"text": "Oddiy so‘rov ham shu ovoz bilan ishlaydi.", "format": "wav"},
                                  {"X-API-Key": self.key})
         self.assertEqual((status, h["Content-Type"]), (200, "audio/wav"))
+
+    # ------------------------------------------------------------ language and emotion (2026-11-15)
+    def test_parse_style(self):
+        ps = serve.parse_style
+        self.assertEqual(ps({}, True), {})
+        self.assertEqual(ps({"lang": "EN", "emotion": "Iliq", "intensity": "0.8"}, True),
+                         {"lang": "en", "emotion": "iliq", "intensity": 0.8})
+        self.assertEqual(ps({"intensity": 0}, True), {"intensity": 0.0})
+        for body, code, english in [({"lang": "ru"}, "bad_lang", True), ({"lang": "en"}, "lang_unavailable", False),
+                                    ({"emotion": "g‘azab"}, "bad_emotion", True), ({"intensity": 1.5}, "bad_intensity", True),
+                                    ({"intensity": -0.1}, "bad_intensity", True), ({"intensity": "nan"}, "bad_intensity", True),
+                                    ({"intensity": "kuchli"}, "bad_intensity", True)]:
+            with self.assertRaises(serve.ApiError) as cm:
+                ps(body, english)
+            self.assertEqual(cm.exception.code, code, body)
+        self.assertEqual(ps({"lang": "auto"}, False), {"lang": "auto"})  # auto without English: all Uzbek
+        with self.assertRaises(serve.ApiError) as cm:                     # no emotion bank yet: refused, not ignored
+            ps({"emotion": "iliq"}, True, emotions=False)
+        self.assertEqual(cm.exception.code, "emotion_unavailable")
+        self.assertEqual(ps({"emotion": "neytral"}, True, emotions=False), {"emotion": "neytral"})
+
+    def test_plain_style_is_the_old_path(self):
+        self.assertTrue(serve.is_plain({}))
+        self.assertTrue(serve.is_plain({"lang": "uz", "emotion": "neytral", "intensity": 1}))
+        self.assertFalse(serve.is_plain({"emotion": "iliq"}))
+        self.assertFalse(serve.is_plain({"lang": "auto"}))
+
+    def test_ws_style_is_sticky_and_marks_name_it(self):
+        st = self.handler.service.streamer
+        st.styles.clear()
+        c = WSClient(self.port, f"/v1/stream?key={self.key}")
+        c.recv()
+        c.send({"type": "text", "text": "Salom! ", "emotion": "iliq", "intensity": 0.8})
+        c.send({"type": "text", "text": "Endi Part 2 ga o‘tamiz.", "flush": True})   # no fields: style stays
+        got = c.until("end")
+        marks = [v for k, v in got if k == "text" and v["type"] == "mark"]
+        self.assertEqual([(m["lang"], m["emotion"]) for m in marks], [("uz", "iliq"), ("uz", "iliq")])
+        self.assertEqual([s[2:] for s in st.styles], [("iliq", 0.8), ("iliq", 0.8)])
+        c.send({"type": "text", "text": "Yaxshi.", "emotion": "neytral", "flush": True})   # changed back
+        got = c.until("end")
+        self.assertEqual([v["emotion"] for k, v in got if k == "text" and v["type"] == "mark"], ["neytral"])
+        c.close()
+
+    def test_ws_bad_style_skips_the_message_only(self):
+        c = WSClient(self.port, f"/v1/stream?key={self.key}")
+        c.recv()
+        c.send({"type": "text", "text": "Bu aytilmaydi.", "emotion": "g‘azab", "flush": True})
+        k, v = c.recv()
+        self.assertEqual((v["type"], v["code"]), ("error", "bad_emotion"))
+        c.send({"type": "text", "text": "Bu aytiladi.", "flush": True})
+        got = c.until("end")
+        self.assertEqual([v["text"] for k, v in got if k == "text" and v["type"] == "mark"], ["Bu aytiladi."])
+        c.close()
+
+    def test_ws_auto_language_per_sentence(self):
+        c = WSClient(self.port, f"/v1/stream?key={self.key}")
+        c.recv()
+        c.send({"type": "text", "text": "Javobingiz uchun rahmat. That's the end of the speaking test.",
+                "lang": "auto", "flush": True})
+        got = c.until("end")
+        marks = [(v["lang"], v["text"]) for k, v in got if k == "text" and v["type"] == "mark"]
+        self.assertEqual(marks, [("uz", "Javobingiz uchun rahmat."), ("en", "That's the end of the speaking test.")])
+        c.close()
+
+    def test_tts_with_emotion_and_english(self):
+        st = self.handler.service.streamer
+        st.styles.clear()
+        status, h, _ = self.post("/v1/tts", {"text": "Bugun ajoyib kun! Keling, boshlaymiz.", "emotion": "quvnoq",
+                                             "intensity": 0.5, "format": "wav", "seed": 11}, {"X-API-Key": self.key})
+        self.assertEqual((status, h["Content-Type"]), (200, "audio/wav"))
+        self.assertTrue(st.styles and all(s[1:] == ("uz", "quvnoq", 0.5) for s in st.styles), st.styles)
+        st.styles.clear()
+        status, h, _ = self.post("/v1/tts", {"text": "The test starts at 9:30.", "lang": "en", "format": "wav",
+                                             "seed": 12}, {"X-API-Key": self.key})
+        self.assertEqual(status, 200)
+        # (the fake's audio is too short for its text, so StreamVoice retakes it: same style every time)
+        self.assertEqual(set(st.styles), {("The test starts at nine thirty.", "en", "neytral", None)})
+        status, _, body = self.post("/v1/tts", {"text": "Salom.", "emotion": "g‘azab"}, {"X-API-Key": self.key})
+        self.assertEqual((status, json.loads(body)["code"]), (400, "bad_emotion"))
+
+    def test_voices_lists_languages_and_emotions(self):
+        with urllib.request.urlopen(self.base + "/v1/voices", timeout=5) as r:
+            v = json.loads(r.read())["voices"][0]
+        self.assertEqual(v["languages"], ["uz", "en", "auto"])
+        self.assertEqual([e["id"] for e in v["emotions"]],
+                         ["neytral", "iliq", "quvnoq", "hayajonli", "xotirjam", "jiddiy", "hamdard", "hayron"])
+        self.assertEqual((v["default_emotion"], v["intensity"]["default"]), ("neytral", 0.6))
+
+    def test_no_emotion_bank_is_refused_cleanly(self):
+        st = self.handler.service.streamer
+        saved, st.bank = st.bank, {}
+        try:
+            status, _, body = self.post("/v1/tts", {"text": "Salom.", "emotion": "quvnoq"}, {"X-API-Key": self.key})
+            self.assertEqual((status, json.loads(body)["code"]), (400, "emotion_unavailable"))
+            with urllib.request.urlopen(self.base + "/v1/voices", timeout=5) as r:
+                v = json.loads(r.read())["voices"][0]
+            self.assertEqual([e["id"] for e in v["emotions"]], ["neytral"])
+            c = WSClient(self.port, f"/v1/stream?key={self.key}")
+            c.recv()
+            c.send({"type": "text", "text": "Salom.", "emotion": "iliq", "flush": True})
+            self.assertEqual(c.recv()[1]["code"], "emotion_unavailable")
+            c.close()
+            for _ in range(200):   # the server closes its side a moment later; later tests count open sessions
+                if self.handler.service.sessions == 0:
+                    break
+                time.sleep(0.01)
+        finally:
+            st.bank = saved
+
+    def test_english_off_is_refused_cleanly(self):
+        st = self.handler.service.streamer
+        saved, st.english = st.english, None
+        try:
+            status, _, body = self.post("/v1/tts/stream", {"text": "Hello there.", "lang": "en"}, {"X-API-Key": self.key})
+            self.assertEqual((status, json.loads(body)["code"]), (400, "lang_unavailable"))
+        finally:
+            st.english = saved
 
 
 if __name__ == "__main__":

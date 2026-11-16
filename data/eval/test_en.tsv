@@ -1,0 +1,43 @@
+# English test set (2026-11-15): what the IELTS Buddy examiner says, plus names, numbers and the sounds an Uzbek
+# accent changes (th, w/v, r, final consonants, vowel length). Scored with the English Whisper (CER) and the
+# blind accent judge. Format: id<TAB>category<TAB>text
+e01	part1	Good morning. My name is Javohir, and I will be your examiner today.
+e02	part1	Can you tell me your full name, please?
+e03	part1	Do you work, or are you a student?
+e04	part1	What do you like most about your hometown?
+e05	part1	How often do you read books in your free time?
+e06	part1	Let's talk about the weather. What's your favourite season, and why?
+e07	part1	Do you prefer cooking at home or eating out?
+e08	part1	Have you ever been to a music festival?
+e09	part2	Now I'm going to give you a topic, and I'd like you to talk about it for one to two minutes.
+e10	part2	You have one minute to think about what you're going to say. You can make some notes if you wish.
+e11	part2	Describe a place you visited that you would like to return to.
+e12	part2	You should say where it is, when you went there, and what you did there.
+e13	part2	Describe a person who has influenced your life in a positive way.
+e14	part2	All right? Remember, you have one to two minutes for this, so don't worry if I stop you.
+e15	part3	Why do you think some people prefer to travel alone?
+e16	part3	In what ways has technology changed the way people communicate?
+e17	part3	Should governments invest more in public transport than in new roads?
+e18	part3	Some people say that the internet makes us less creative. What's your view?
+e19	part3	How might the role of teachers change over the next twenty years?
+e20	part3	Is it better for children to grow up in the city or in the countryside?
+e21	names	Samarkand, Bukhara and Khiva are famous cities on the Silk Road.
+e22	names	Professor Williams works at the University of Cambridge.
+e23	names	Elizabeth and Matthew moved from Washington to Vancouver.
+e24	names	Our flight to New York leaves from Tashkent International Airport.
+e25	numbers	The test starts at 9:30, so please arrive by 9 o'clock.
+e26	numbers	The museum opened in 1998 and welcomes about 250,000 visitors a year.
+e27	numbers	Your band score improved from 6.5 to 7.5 in just 3 months.
+e28	numbers	The ticket costs $45, which is 20% cheaper than last year.
+e29	numbers	She was born on the 13th of February, 2003.
+e30	sounds	I think this theory is worth thinking through thoroughly.
+e31	sounds	The weather in the north was warmer than they thought it would be.
+e32	sounds	We visited a very lovely village with wonderful views.
+e33	sounds	Whether or not you agree, every opinion is valuable.
+e34	sounds	Would you rather live in a vibrant city or a quiet village?
+e35	sounds	Thursday the third works perfectly for both of us.
+e36	sounds	The world's rarest birds were recorded near the river.
+e37	sounds	I asked whether the old bridge could be rebuilt by next spring.
+e38	examiner	Thank you. Now let's discuss some more general questions related to this topic.
+e39	examiner	Could you explain that a little more? Can you give me an example?
+e40	examiner	Very well. That is the end of the speaking test. Thank you, and good luck.

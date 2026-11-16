@@ -12,6 +12,8 @@
  *   await tts.connect();          // call from a click/tap: browsers only start audio after a user gesture
  *   tts.say('Endi Part 2 ga o‘tamiz. ');   // pieces from your LLM, as they arrive
  *   tts.say('Describe a place you like to visit.');
+ *   tts.say('Ajoyib javob! ', { emotion: 'iliq', intensity: 0.7 });   // once /v1/voices lists emotions (not yet)
+ *   tts.say('Now tell me why.', { lang: 'en' });                      // English in the same voice, no Uzbek accent
  *   tts.flush();                  // end of the examiner's turn
  *   tts.cancel();                 // the student starts talking: silence now
  *
@@ -19,6 +21,8 @@
  * browser a short-lived token (getToken). `key` works too, for tests on your own machine.
  *
  * Server -> client: binary PCM16 little-endian, mono, 24 kHz; JSON {"type": "ready" | "start" | "mark" | "end" | "error"}.
+ * Style (docs/API.md section 10): lang "uz" | "en" | "auto", emotion one of EMOTIONS, intensity 0..1. A field sent once
+ * stays in force for the following text until it is sent again; leaving them all out keeps the old Uzbek voice exactly.
  */
 
 const WORKLET = `
@@ -58,6 +62,8 @@ class TilsimPlayer extends AudioWorkletProcessor {
 registerProcessor('tilsim-player', TilsimPlayer);
 `;
 
+export const EMOTIONS = ['neytral', 'iliq', 'quvnoq', 'hayajonli', 'xotirjam', 'jiddiy', 'hamdard', 'hayron'];
+
 export class TilsimStream {
   /**
    * @param {object} o
@@ -67,7 +73,8 @@ export class TilsimStream {
    * @param {() => Promise<string>} [o.getToken]  fetches a fresh token for each connect()
    * @param {number} [o.prebufferMs=100]  audio kept before playback starts (absorbs network jitter and the ~0.1 s
    *   worst gap measured on the laptop GPU)
-   * @param {(text: string) => void} [o.onMark]   the sentence being spoken now
+   * @param {(text: string, info: {lang?: string, emotion?: string}) => void} [o.onMark]  the sentence being spoken now,
+   *   with the language and emotion it is spoken in
    * @param {() => void} [o.onStart]  first audio of a turn is on its way
    * @param {(reason: string) => void} [o.onEnd]  "done" | "cancelled"
    * @param {() => void} [o.onIdle]   the speaker went quiet (buffer played out)
@@ -118,7 +125,7 @@ export class TilsimStream {
     const m = JSON.parse(e.data);
     if (m.type === 'ready') ready?.();
     else if (m.type === 'start') { this.turnLive = true; this.o.onStart?.(); }
-    else if (m.type === 'mark') this.o.onMark?.(m.text);
+    else if (m.type === 'mark') this.o.onMark?.(m.text, { lang: m.lang, emotion: m.emotion });
     else if (m.type === 'end') { this.turnLive = true; this.o.onEnd?.(m.reason); }
     else if (m.type === 'error') this.o.onError?.(m);
   }
@@ -128,8 +135,16 @@ export class TilsimStream {
     this.ws.send(JSON.stringify(obj));
   }
 
-  /** Text to speak; pieces may be any size. flush=true ends the turn. */
-  say(text, { flush = false } = {}) { this.turnLive = true; this._send({ type: 'text', text, flush }); }
+  /** Text to speak; pieces may be any size. flush=true ends the turn.
+   *  lang / emotion / intensity: optional voice style; sent only when given, and it stays until changed. */
+  say(text, { flush = false, lang, emotion, intensity } = {}) {
+    this.turnLive = true;
+    const msg = { type: 'text', text, flush };
+    if (lang !== undefined) msg.lang = lang;
+    if (emotion !== undefined) msg.emotion = emotion;
+    if (intensity !== undefined) msg.intensity = intensity;
+    this._send(msg);
+  }
 
   /** End of the turn: the rest of the text is spoken, then onEnd("done"). */
   flush() { this._send({ type: 'flush' }); }

@@ -1,0 +1,86 @@
+# Emotion bank recording script (2026-11-15): 8 moods x 10 sentences, about 1 minute each.
+# Not recorded (the founder could not record): the emotion bank is bootstrapped from these texts instead,
+# see data/eval/emo_seed.tsv and docs/ROADMAP.md. Still ready for a real recording session later.
+# The id shows the mood (neytral_01, iliq_01, ...). Read each block in that mood, the way you would really talk
+# to a person: natural, medium strength, never theatrical. Same microphone, room and distance as ref.wav.
+# Format: id<TAB>text. If you change a word while reading, fix the text in the studio (E) so it matches.
+neytral_01	Bugun darsimizda o'tgan zamon fe'llarini takrorlaymiz.
+neytral_02	Poyezd Toshkentdan ertalab soat sakkizda jo'naydi.
+neytral_03	Hisobingizdagi qoldiq har oyning birinchi kuni yangilanadi.
+neytral_04	Kitobning uchinchi bobi shahar tarixiga bag'ishlangan.
+neytral_05	Ro'yxatdan o'tish uchun telefon raqamingizni kiriting.
+neytral_06	Ertaga havo bulutli bo'ladi, kechqurun yomg'ir yog'ishi mumkin.
+neytral_07	Imtihon uch qismdan iborat va taxminan o'n besh daqiqa davom etadi.
+neytral_08	Do'kon dushanbadan shanbagacha ishlaydi.
+neytral_09	Bu xonada o'n ikkita stol va bitta katta doska bor.
+neytral_10	Keyingi bekat Chilonzor, eshiklar o'ng tomondan ochiladi.
+iliq_01	Xush kelibsiz, sizni ko'rganimdan juda xursandman.
+iliq_02	Xavotir olmang, hammasini birga asta-sekin o'rganamiz.
+iliq_03	Bugun ham darsga kelganingiz uchun rahmat, bu juda muhim.
+iliq_04	Charchagan bo'lsangiz, bir oz dam oling, keyin davom etamiz.
+iliq_05	Siz bilan suhbatlashish har doim yoqimli.
+iliq_06	Yaxshi javob berdingiz, fikringizni yana biroz kengaytirib ko'ring.
+iliq_07	Onam har kuni ertalab bizga issiq non va choy tayyorlardi.
+iliq_08	Savolingiz bo'lsa, bemalol so'rang, men shu yerdaman.
+iliq_09	Do'stlaringiz bilan o'tkazgan kunlaringizni eslab ko'ring.
+iliq_10	Har bir kichik qadam sizni maqsadingizga yaqinlashtiradi.
+quvnoq_01	Bugun ajoyib kun, keling, darsni zavq bilan boshlaymiz!
+quvnoq_02	Voy, qanday yaxshi yangilik, tabriklayman!
+quvnoq_03	Yangi mavsum boshlandi, hamma do'konlarda katta chegirmalar!
+quvnoq_04	Bayram arafasida butun shahar chiroqlarga burkandi.
+quvnoq_05	Ertaga dam olish kuni, tog'ga sayohatga boramiz!
+quvnoq_06	Bu safar hammasi zo'r chiqdi, juda ham xursandmiz!
+quvnoq_07	Bolalar hovlida quvnab o'ynashar, kulgilari butun mahallaga yetardi.
+quvnoq_08	Qani, birga kuylaymiz, kayfiyat ko'tarilsin!
+quvnoq_09	Sizga bir sovg'a tayyorlab qo'ydim, ochib ko'ring!
+quvnoq_10	Yozgi ta'til boshlandi, endi istagancha dam olamiz!
+hayajonli_01	Diqqat, diqqat! Faqat bugun barcha mahsulotlarga yarim narx!
+hayajonli_02	Ishonasizmi, biz finalga chiqdik!
+hayajonli_03	Mana u, hamma kutgan yangi telefon nihoyat sotuvda!
+hayajonli_04	Tezroq bo'ling, joylar soni cheklangan!
+hayajonli_05	Bu yil festivalda mingdan ortiq ishtirokchi qatnashadi!
+hayajonli_06	U so'nggi soniyada to'pni darvozaga kiritdi!
+hayajonli_07	Natijalar chiqdi, siz eng yuqori ballni oldingiz!
+hayajonli_08	Tasavvur qiling, bir oyda ingliz tilida bemalol gapira boshlaysiz!
+hayajonli_09	Eshik ochildi va xonaga kutilmagan mehmon kirib keldi!
+hayajonli_10	Endi hammasi sizning qo'lingizda, oldinga!
+xotirjam_01	Chuqur nafas oling va asta-sekin chiqaring.
+xotirjam_02	Shoshilmang, javobni o'ylab olishga vaqtingiz yetarli.
+xotirjam_03	Kechki shamol daraxt barglarini sekin tebratardi.
+xotirjam_04	Ko'zingizni yuming va dengiz shovqinini tasavvur qiling.
+xotirjam_05	Hamma narsa o'z vaqtida joyiga tushadi.
+xotirjam_06	Daryo bo'yida o'tirib, suvning oqishini kuzatdik.
+xotirjam_07	Bugun kun bo'yi qilgan ishlaringiz uchun o'zingizga rahmat ayting.
+xotirjam_08	Xonada faqat soatning chiqillagani eshitilardi.
+xotirjam_09	Tinch uyqu sog'liq uchun eng yaxshi dori.
+xotirjam_10	Hozir hech qayerga shoshilishning hojati yo'q.
+jiddiy_01	Iltimos, diqqat bilan tinglang, bu juda muhim.
+jiddiy_02	Imtihon paytida telefondan foydalanish qat'iyan man etiladi.
+jiddiy_03	Shartnomani imzolashdan oldin har bir bandni o'qib chiqing.
+jiddiy_04	Bu xatoni ikkinchi marta takrorlamasligingiz kerak.
+jiddiy_05	Hisobingizga begona kirishga urinish aniqlandi.
+jiddiy_06	Vaziyat jiddiy, zudlik bilan choralar ko'rish lozim.
+jiddiy_07	Javobingiz savolga mos kelmadi, qaytadan urinib ko'ring.
+jiddiy_08	Qonun hamma uchun bir xil.
+jiddiy_09	U uzoq jim turdi, keyin og'ir ovozda gap boshladi.
+jiddiy_10	Muddat o'tib ketsa, arizangiz ko'rib chiqilmaydi.
+hamdard_01	Bu siz uchun qanchalik og'ir ekanini tushunaman.
+hamdard_02	Afsuski, bu safar natija biz kutgandek bo'lmadi.
+hamdard_03	Xafa bo'lmang, xato qilish o'rganishning bir qismi.
+hamdard_04	Yo'qotishingiz uchun chin dildan hamdardlik bildiraman.
+hamdard_05	Kechirasiz, sizni uzoq kuttirib qo'ydik.
+hamdard_06	Kampir derazadan uzoq qarab, o'g'lini kutdi.
+hamdard_07	Charchaganingizni sezyapman, bugun shuning o'zi yetarli.
+hamdard_08	Qiyin paytda yoningizda bo'lolmaganimdan afsusdaman.
+hamdard_09	Hammamiz ham ba'zan adashamiz, bu tabiiy hol.
+hamdard_10	Qo'rqmang, biz sizga albatta yordam beramiz.
+hayron_01	Nahotki, bu rostdan ham shunday bo'lgan?
+hayron_02	Voy, buni qanday qilib bir kunda tugatdingiz?
+hayron_03	Kutilmaganda eshik ochilib, ichkariga kim kirdi deng?
+hayron_04	Shu paytgacha buni hech eshitmagan ekanman.
+hayron_05	Qiziq, nega bu haqda hech kim gapirmadi ekan?
+hayron_06	U qutini ochdi-yu, ko'zlariga ishonmadi.
+hayron_07	Rostdanmi? Men buni umuman kutmagandim!
+hayron_08	Bu kichkina bola shuncha kitobni o'qib chiqibdimi?
+hayron_09	Qanday qilib u yerga birinchi bo'lib yetib keldingiz?
+hayron_10	Hayronman, bularning hammasi qayerdan paydo bo'ldi?

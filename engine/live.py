@@ -114,12 +114,19 @@ class LiveSession:
         self.billed_seconds = 0.0
         self.closed = False
         self.pacer = None               # engine/stream.Pacer for the current turn (shared by its sentences)
+        self.bill_lock = threading.Lock()
+        self._billing: threading.Thread | None = None
+        self.style: dict = {}           # lang / emotion / intensity from "text" messages; sticky until changed
         self.worker = threading.Thread(target=self._run, daemon=True)
         self.worker.start()
 
     # ------------------------------------------------------------ client side
-    def feed(self, text: str, flush: bool = False) -> None:
+    def feed(self, text: str, flush: bool = False, style: dict | None = None) -> None:
+        """style: {"lang", "emotion", "intensity"} (any subset). It applies to every sentence completed from now on
+        and stays for later messages until changed, so an LLM stream can set it once at the start of a turn."""
         with self.lock:
+            if style:
+                self.style = {**self.style, **style}
             for s in self.buffer.feed(text):
                 self._queue(s)
         if flush:
@@ -148,6 +155,8 @@ class LiveSession:
         self.cancel_ev.set()
         self.q.put((None, None))
         self.worker.join(timeout=5)
+        if self._billing is not None:
+            self._billing.join(timeout=10)
         self.bill()
 
     def _queue(self, sentence: str) -> None:
@@ -155,7 +164,7 @@ class LiveSession:
             self.q.put((self.turn, ("__error__", "quota_exceeded")))
             return
         self.chars += len(sentence)
-        self.q.put((self.turn, sentence))
+        self.q.put((self.turn, (sentence, dict(self.style))))
 
     # ------------------------------------------------------------ worker
     def _run(self) -> None:
@@ -169,13 +178,13 @@ class LiveSession:
                 self.cancel_ev.clear()
                 self._end("cancelled")
                 continue
-            if isinstance(item, tuple) and item[0] == "__error__":
+            if isinstance(item, tuple) and item[0] == "__error__" and isinstance(item[1], str):  # not a (sentence, style)
                 self.send_event({"type": "error", "code": item[1]})
                 continue
             if item is FLUSH_MARK:
                 self._end("done")
                 continue
-            self._speak(item, turn)
+            self._speak(item[0], turn, item[1])
 
     def _new_pacer(self):
         try:
@@ -189,17 +198,21 @@ class LiveSession:
         self.send_event({"type": "end", "reason": reason})
         self.started = False
         self.spoken_in_turn = 0
-        self.bill()
+        # Billing in the background: on the cloud a usage write is a volume commit (~2 s). Done here, it held the
+        # worker, so a turn sent right after "end" got its first audio ~2 s late (measured 2026-11-16: 1.3 s vs 3.3 s).
+        self._billing = threading.Thread(target=self.bill, daemon=True)
+        self._billing.start()
 
     def bill(self) -> None:
         """Hand the characters spoken and audio seconds sent since the last bill to on_usage (once per turn:
         on the cloud every usage write is a volume commit, too slow to do per sentence)."""
-        chars, secs = self.billed_chars_pending, self.seconds - self.billed_seconds
-        self.billed_chars_pending, self.billed_seconds = 0, self.seconds
-        if self.on_usage and (chars or secs > 0):
-            self.on_usage(chars, secs)
+        with self.bill_lock:   # one write at a time, in turn order
+            chars, secs = self.billed_chars_pending, self.seconds - self.billed_seconds
+            self.billed_chars_pending, self.billed_seconds = 0, self.seconds
+            if self.on_usage and (chars or secs > 0):
+                self.on_usage(chars, secs)
 
-    def _speak(self, sentence: str, turn: int) -> None:
+    def _speak(self, sentence: str, turn: int, style: dict | None = None) -> None:
         if not self.started:
             self.send_event({"type": "start"})
             self.started = True
@@ -212,12 +225,14 @@ class LiveSession:
         t0 = time.perf_counter()
         try:
             kw = {"pacer": self.pacer} if self.pacer is not None else {}
+            kw.update(style or {})
             for ev in self.streamer.stream(sentence, cancel=self.cancel_ev, seed=self.seed + self.spoken_in_turn,
                                            priority=self.priority, **kw):
                 if self.cancel_ev.is_set() or turn != self.turn or self.closed:
                     return
                 if ev["type"] == "mark":
-                    self.send_event({"type": "mark", "text": ev["text"]})
+                    self.send_event({"type": "mark", "text": ev["text"],
+                                     **{k: ev[k] for k in ("lang", "emotion") if k in ev}})
                 elif ev["type"] == "audio" and len(ev["pcm"]):
                     self.send_audio(pcm16(ev["pcm"]))
                     self.seconds += len(ev["pcm"]) / SR

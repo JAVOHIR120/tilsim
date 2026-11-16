@@ -42,6 +42,18 @@ TEXTS = {
 }
 
 
+# English mode and mixed text (2026-11-16): (text, lang)
+TEXTS_LANG = {
+    "en_short": ("Good morning. Let's start with a few questions about yourself.", "en"),
+    "en_medium": ("Now I'm going to give you a topic, and I'd like you to talk about it for one to two minutes. "
+                  "You have one minute to think about what you're going to say. You can make some notes if you wish.", "en"),
+    "mixed": ("Yaxshi, endi ikkinchi qismga o‘tamiz. Describe a place you visited that you would like to return to. "
+              "Bir daqiqa tayyorlaning.", "auto"),
+}
+for _k, (_v, _l) in TEXTS_LANG.items():
+    TEXTS[_k] = _v
+
+
 def word_count(text: str) -> int:
     return len(text.split())
 
@@ -76,10 +88,10 @@ def run_baseline(voice, text: str, t3t: Timer, s3t: Timer) -> dict:
     return {"ttfa": total, "first_sentence": first[0] - t0 if first else total, "gen": total, "audio": secs}
 
 
-def run_stream(streamer, text: str, t3t: Timer, s3t: Timer) -> dict:
+def run_stream(streamer, text: str, t3t: Timer, s3t: Timer, lang: str = "uz") -> dict:
     t0 = time.perf_counter()
     ttfa, samples, chunks, gaps, last = None, 0, 0, [], None
-    for item in streamer.stream(text):
+    for item in streamer.stream(text, lang=lang):
         if item["type"] != "audio":
             continue
         now = time.perf_counter()
@@ -132,6 +144,7 @@ def main() -> None:
     ap.add_argument("--fast-flow", action="store_true", help="stream mode: flow UNet in half precision + CUDA graphs")
     ap.add_argument("--json", type=Path, help="also write the results here")
     ap.add_argument("--label", default="")
+    ap.add_argument("--profile", default="ovozim", help="stream mode: voice profile (data/voices/<name>.json)")
     args = ap.parse_args()
 
     import torch
@@ -149,7 +162,7 @@ def main() -> None:
         voice.synth(["Salom."])  # warm-up
     else:
         import stream
-        streamer = stream.Streamer.load("ovozim", dtype=args.dtype, cfm_steps=args.cfm_steps,
+        streamer = stream.Streamer.load(args.profile, dtype=args.dtype, cfm_steps=args.cfm_steps,
                                         first_chunk=args.first_chunk or None, chunk=args.chunk or None,
                                         dec_cond=args.dec_cond or None, graphs=args.graphs, streams=args.streams,
                                         flow_half=args.fast_flow, flow_graphs=args.fast_flow)
@@ -158,6 +171,10 @@ def main() -> None:
         streamer.warmup()
     load_s = time.perf_counter() - t_load
     print(f"{dev}: loaded + warmed in {load_s:.0f} s ({args.mode}, {args.dtype}, cfm {args.cfm_steps})", flush=True)
+    if torch.cuda.is_available():
+        print(f"  after load: allocated {torch.cuda.memory_allocated() / 2**30:.2f} GB, reserved "
+              f"{torch.cuda.memory_reserved() / 2**30:.2f} GB, load peak {torch.cuda.max_memory_reserved() / 2**30:.2f} GB",
+              flush=True)
 
     rows = []
     for name in args.texts.split(","):
@@ -167,7 +184,8 @@ def main() -> None:
             t3t.total = s3t.total = 0.0
             if torch.cuda.is_available():
                 torch.cuda.reset_peak_memory_stats()
-            res = runner(target, text, t3t, s3t)
+            res = (runner(target, text, t3t, s3t, TEXTS_LANG[name][1]) if name in TEXTS_LANG
+                   else runner(target, text, t3t, s3t))
             res["t3"], res["s3"] = t3t.total, s3t.total
             if torch.cuda.is_available():
                 res["vram_alloc"] = torch.cuda.max_memory_allocated() / 2**30

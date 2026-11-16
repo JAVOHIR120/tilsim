@@ -37,6 +37,7 @@ def features(path: str | Path, text: str | None = None) -> dict:
         "pitch_st": round(float(np.std(st)), 2),
         "pitch_range_st": round(float(np.percentile(st, 95) - np.percentile(st, 5)), 2),
         "speaking_s": round(float(speaking.sum() * hop / sr), 2),
+        "loud_db": round(float(np.mean(db[speaking])), 1) if speaking.any() else None,  # mean level while speaking
     }
     if text:
         vowels = len(VOWELS.findall(text.lower()))

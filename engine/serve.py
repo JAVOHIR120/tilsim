@@ -166,6 +166,47 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.retry_after = status, code, message, retry_after
 
 
+# Optional voice style of a request or a live "text" message (2026-11-15). Left out = the old behaviour exactly.
+LANGS = ("uz", "en", "auto")
+EMOTIONS = {"neytral": "neutral", "iliq": "warm", "quvnoq": "cheerful", "hayajonli": "excited",
+            "xotirjam": "calm", "jiddiy": "serious", "hamdard": "sympathetic", "hayron": "surprised"}
+
+
+def parse_style(body: dict, english: bool, emotions: bool = True) -> dict:
+    """lang / emotion / intensity -> a dict holding only the fields given. Raises ApiError on a bad value.
+    emotions=False: the voice has no emotion bank yet, so any emotion but "neytral" is refused, not silently ignored."""
+    out: dict = {}
+    if body.get("lang") is not None:
+        lang = str(body["lang"]).lower()
+        if lang not in LANGS:
+            raise ApiError(400, "bad_lang", "lang: uz, en yoki auto.")
+        if lang == "en" and not english:
+            raise ApiError(400, "lang_unavailable", "Bu serverda inglizcha rejim yoqilmagan.")
+        out["lang"] = lang
+    if body.get("emotion") is not None:
+        emotion = str(body["emotion"]).lower()
+        if emotion not in EMOTIONS:
+            raise ApiError(400, "bad_emotion", "emotion: " + ", ".join(EMOTIONS) + ".")
+        if emotion != "neytral" and not emotions:
+            raise ApiError(400, "emotion_unavailable", "Emotsiyalar hali tayyor emas: hozircha faqat \"neytral\". "
+                                                      "Tayyor bo‘lganda /v1/voices ro‘yxatida ko‘rinadi.")
+        out["emotion"] = emotion
+    if body.get("intensity") is not None:
+        try:
+            x = float(body["intensity"])
+        except (TypeError, ValueError):
+            x = -1.0
+        if not 0.0 <= x <= 1.0:   # also rejects NaN
+            raise ApiError(400, "bad_intensity", "intensity 0 dan 1 gacha son bo‘lsin.")
+        out["intensity"] = x
+    return out
+
+
+def is_plain(style: dict) -> bool:
+    """Uzbek, neutral: the request takes exactly the path it took before styles existed."""
+    return style.get("lang", "uz") == "uz" and style.get("emotion", "neytral") == "neytral"
+
+
 class Voice:
     """The loaded model plus one voice profile; used by the single worker thread only."""
 
@@ -224,12 +265,12 @@ class StreamVoice:
         import numpy as np
         self.s, self.sr, self.np = streamer, streamer.sr, np
 
-    def sentence(self, spoken: str, seed: int, priority: int = 1):
+    def sentence(self, spoken: str, seed: int, priority: int = 1, style=None):
         np = self.np
         letters = max(1, sum(ch.isalpha() for ch in spoken))
         best, best_gap = None, 1e9
         for attempt in range(3):
-            parts = list(self.s.sentence(spoken, seed + 1000 * attempt, None, priority, whole=True))
+            parts = list(self.s.sentence(spoken, seed + 1000 * attempt, None, priority, whole=True, style=style))
             wav = np.concatenate(parts) if parts else np.zeros(0, np.float32)
             rate = letters / max(len(wav) / self.sr, 1e-3)
             if 7 <= rate <= 22:
@@ -245,6 +286,18 @@ class StreamVoice:
         pieces = []
         for i, s in enumerate(sentences):
             pieces += [self.sentence(s, seed + i, priority), pause]
+            if progress:
+                progress(i + 1)
+        return np.concatenate(pieces[:-1]) if pieces else np.zeros(0, np.float32)
+
+    def synth_plan(self, plan: list[tuple[str, str]], seed: int, style: dict, progress=None, priority: int = 1):
+        """[(lang, spoken sentence)] in one emotion: the styled /v1/tts and jobs."""
+        np = self.np
+        pause = np.zeros(int(0.25 * self.sr), np.float32)
+        pieces = []
+        for i, (lang, s) in enumerate(plan):
+            st = self.s.style(lang, style.get("emotion"), style.get("intensity"))
+            pieces += [self.sentence(s, seed + i, priority, st), pause]
             if progress:
                 progress(i + 1)
         return np.concatenate(pieces[:-1]) if pieces else np.zeros(0, np.float32)
@@ -326,6 +379,10 @@ class Service:
 
     def _make(self, req: dict, progress=None, priority: int = 1) -> dict:
         """GPU work only: raw float audio. Encoding happens on the caller's thread, so the GPU never waits for ffmpeg."""
+        if req.get("plan") is not None:   # English / auto / emotion: always the streaming engine
+            sv = self.voice if isinstance(self.voice, StreamVoice) else StreamVoice(self.streamer)
+            audio = sv.synth_plan(req["plan"], req["seed"], req["style"], progress, priority=priority)
+            return {"spoken": req["spoken"], "pcm": audio, "sr": sv.sr, "seconds": round(len(audio) / sv.sr, 2)}
         if isinstance(self.voice, StreamVoice):
             audio = self.voice.synth(req["sentences"], req["seed"], progress, priority=priority)
         else:
@@ -365,11 +422,36 @@ class Service:
             seed = int(body.get("seed", 0))
         except (TypeError, ValueError):
             raise ApiError(400, "bad_seed", "seed butun son bo‘lsin.") from None
+        style = parse_style(body, self.english(), self.emotions())
+        if not is_plain(style):
+            return self._prepare_styled(text, voice, fmt, seed, style, max_chars)
         spoken = normalize(text)
         if len(spoken) > max_chars * MAX_SPOKEN_RATIO:
             raise ApiError(400, "too_long", "Matn so‘zga aylantirilganda juda uzun bo‘ldi (raqamlar ko‘p). Qisqartiring.")
         return {"text": text, "voice": voice, "format": fmt, "seed": seed, "spoken": spoken,
-                "sentences": split_sentences(spoken, max_chars=200)}
+                "sentences": split_sentences(spoken, max_chars=200), "style": style}
+
+    def english(self) -> bool:
+        return getattr(self.streamer, "english", None) is not None
+
+    def emotions(self) -> bool:
+        """True once the voice profile has an emotion bank (profile["emotions"]); until then only "neytral"."""
+        return bool(getattr(self.streamer, "bank", None))
+
+    def _prepare_styled(self, text: str, voice: str, fmt: str, seed: int, style: dict, max_chars: int) -> dict:
+        """English, auto or an emotion: made on the streaming engine, sentence by sentence in its language."""
+        from uznorm.en_normalize import normalize_en
+        if self.streamer is None:
+            raise ApiError(400, "style_unavailable", "Bu serverda til va emotsiya tanlash yoqilmagan.")
+        plan = []
+        for lang, original in self.streamer.plan(text, style.get("lang", "uz")):
+            said = normalize_en(original) if lang == "en" else normalize(original)
+            plan += [(lang, piece) for piece in split_sentences(said, max_chars=200)]
+        spoken = " ".join(piece for _, piece in plan)
+        if len(spoken) > max_chars * MAX_SPOKEN_RATIO:
+            raise ApiError(400, "too_long", "Matn so‘zga aylantirilganda juda uzun bo‘ldi (raqamlar ko‘p). Qisqartiring.")
+        return {"text": text, "voice": voice, "format": fmt, "seed": seed, "spoken": spoken,
+                "sentences": [piece for _, piece in plan], "plan": plan, "style": style}
 
     def demo_wait(self, who: str) -> int:
         now = time.time()
@@ -403,7 +485,8 @@ class Service:
 
     def cached(self, req: dict):
         """Raw audio is cached per text+voice+seed, so asking again in another format needs no GPU work."""
-        key = hashlib.sha256(json.dumps([req["text"], req["voice"], req["seed"]]).encode()).hexdigest()
+        parts = [req["text"], req["voice"], req["seed"]] + ([req["style"]] if req.get("style") else [])
+        key = hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()
         return key, self.cache.get(key)
 
     def remember(self, key: str, result: dict) -> None:
@@ -582,7 +665,12 @@ class Handler(BaseHTTPRequestHandler):
                         send_event({"type": "error", "code": "bad_json"})
                         continue
                     if mtype == "text":
-                        session.feed(str(msg.get("text", "")), flush=bool(msg.get("flush")))
+                        try:
+                            style = parse_style(msg, s.english(), s.emotions())
+                        except ApiError as e:   # a bad field skips this message; the session stays open
+                            send_event({"type": "error", "code": e.code, "message": e.message})
+                            continue
+                        session.feed(str(msg.get("text", "")), flush=bool(msg.get("flush")), style=style)
                     elif mtype == "flush":
                         session.flush()
                     elif mtype == "cancel":
@@ -615,6 +703,7 @@ class Handler(BaseHTTPRequestHandler):
         left = s.keys.quota_left(rec)
         if left is not None and len(text) > left:
             raise ApiError(402, "quota_exceeded", f"Oylik limit tugadi: {left} belgi qoldi.")
+        style = parse_style(body, s.english(), s.emotions())
         self._open_session(rec)
         cancel, seconds, t0 = threading.Event(), 0.0, time.time()
         try:
@@ -625,7 +714,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Tilsim-Sample-Rate", "24000")
             self.end_headers()
             try:
-                for ev in s.streamer.stream(text, cancel=cancel, priority=SLOT_PRIORITY["key"]):
+                for ev in s.streamer.stream(text, cancel=cancel, priority=SLOT_PRIORITY["key"], **style):
                     if ev["type"] == "audio" and len(ev["pcm"]):
                         chunk = pcm16(ev["pcm"])
                         self.wfile.write(f"{len(chunk):X}\r\n".encode() + chunk + b"\r\n")
@@ -697,7 +786,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._websocket()
             if path == "/v1/voices":
                 return self._json(200, {"voices": [{"id": vid, "sample_rate": 24000,
-                                                    **{k: v for k, v in info.items() if k != "profile"}}
+                                                    **{k: v for k, v in info.items() if k != "profile"},
+                                                    "languages": ["uz", "en", "auto"] if s.english() else ["uz"],
+                                                    "emotions": [{"id": e, "en": en} for e, en in EMOTIONS.items()]
+                                                    if s.emotions() else [{"id": "neytral", "en": "neutral"}],
+                                                    "default_emotion": "neytral", "intensity": {"min": 0, "max": 1,
+                                                                                                "default": 0.6}}
                                                    for vid, info in VOICES.items()], "default": DEFAULT_VOICE})
             kind, rec = self._caller()
             if kind != "key":

@@ -5,6 +5,24 @@
  "prefix_text": "Bir ming uch yuz o'ttiz oltinchi yilda Kesh viloyatida tug'ilgan.",
  "prefix_end": 5.75,
  "prompt_sec": 6,
- "params": {"temperature": 0.7, "exaggeration": 0.4, "cfg_weight": 0.3, "repetition_penalty": 2.0},
- "params_note": "temperature 0.7 chosen 2026-11-15 by a blind Gemini native-ear judge on 20 sentences: 7.50 native / 7.10 natural (0.8: 7.15/6.70; 0.6: 7.40/6.85; 0.5: 7.32/7.05). Use with best-of-3 picked by CER then UTMOS (CER 0.46%, UTMOS 3.80)."
+ "params": {
+  "temperature": 0.7,
+  "exaggeration": 0.4,
+  "cfg_weight": 0.3,
+  "repetition_penalty": 2.0
+ },
+ "params_note": "temperature 0.7 chosen 2026-11-15 by a blind Gemini native-ear judge on 20 sentences: 7.50 native / 7.10 natural (0.8: 7.15/6.70; 0.6: 7.40/6.85; 0.5: 7.32/7.05). Use with best-of-3 picked by CER then UTMOS (CER 0.46%, UTMOS 3.80).",
+ "english": {
+  "note": "English mode (2026-11-16, founder's choice by ear: variant E13). Stock Chatterbox English T3 (no Uzbek LoRA); T3 speech prompt and speaker embedding from a native US male (CMU ARCTIC bdl, free for any use, see CMU_ARCTIC_COPYING.txt); timbre from the founder's ref.wav through S3Gen. Judge 8.3/10 native, CER 0.82%, similarity 0.84 (40 sentences, docs/ROADMAP.md). Loaded only with TILSIM_EN=1: on the 4 GB laptop the second T3 overfills VRAM (4.02 GB, 5x slower).",
+  "spkr": "base",
+  "prompt_wav": "data/voices/english/bdl_prompt.wav",
+  "speaker_npy": "data/voices/english/bdl_ve.npy",
+  "spk_mix": 1.0,
+  "params": {
+   "temperature": 0.8,
+   "exaggeration": 0.5,
+   "cfg_weight": 0.5,
+   "repetition_penalty": 1.2
+  }
+ }
 }

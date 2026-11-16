@@ -121,6 +121,24 @@ Hozirgi `/v1/tts` butun matnni tayyorlab, keyin javob beradi. Shuning uchun biri
 - **torch.compile.** Noutbukdagi venv'da (Windows) Triton yo‘q, shuning uchun uning o‘rniga CUDA graph ishlatildi: T3 2,8×, flow 5,5× tezlashdi. Bulutda (Linux) torch.compile sinab ko‘rilmadi.
 
 
+## Inglizcha rejim (2026-11-16)
+
+Inglizcha gaplar uchun ikkinchi T3 modeli ishlaydi: Chatterbox'ning o‘zbekcha LoRA'siz inglizcha modeli.
+- Uning CUDA graph'i o‘zbekcha model bilan bitta KV keshni bo‘lishadi, shuning uchun til almashish tekin.
+- O‘zbekcha yo‘l eskisi bilan bit-bit bir xil qoldi: tokenlar ham, audio ham.
+
+| Joy | Matn | Birinchi ovoz | RTF | VRAM |
+|---|---|---|---|---|
+| Modal T4, inglizcha yoqiq | o‘zbekcha qisqa / o‘rta | 0,56 / 0,56 s | 0,64 / 0,51 | 4,36 GB |
+| | inglizcha qisqa / o‘rta | 0,55 / 0,55 s | 0,56 / 0,54 | |
+| | aralash (uz → en, `lang=auto`) | 0,56 s | 0,51 | |
+| | 2 oqim bir vaqtda | eng yomoni 1,21 s | 1,07 | 4,53 GB |
+| Noutbuk RTX 3050, inglizcha yoqiq | o‘zbekcha qisqa | 3,95 s ✗ | 3,22 ✗ | 4,02 GB ✗ |
+
+- **T4:** inglizcha qo‘shilishi o‘zbekchani amalda sekinlatmadi (+20–30 ms). Til almashishda birinchi ovoz vaqti o‘zgarmadi, darvoza +50 ms ichida.
+- **Noutbuk:** ikkinchi model (1 GB) 4 GB kartani to‘ldirdi va ortig‘i umumiy xotiraga o‘tib ketdi: hammasi 5–6 baravar sekinlashdi.
+  Shuning uchun inglizcha rejim faqat `TILSIM_EN=1` bilan yoqiladi. Noutbukda u o‘chiq, bulutda yoqiq.
+
 ## Server doim tayyor turishi: narx (Modal)
 
 **Hisob asosi.** Modal'ning rasmiy narx sahifasi (2026-11-15):
